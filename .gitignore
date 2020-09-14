@@ -1,4 +1,5 @@
 build/
+venv/
 book/
 venv/
 node_modules/
@@ -7,3 +8,12 @@ yarn.lock
 .pytest_cache/
 hypothesis_*
 __pycache__
+
+#Added by cargo
+
+**/target
+
+# Other
+
+cfg.pdf
+.vscode/
