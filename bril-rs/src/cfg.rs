@@ -18,6 +18,7 @@ pub struct FunctionGraph {
 #[derive(Debug)]
 pub struct Graph {
     pub name: String,
+    pub starting_vertex : i32,
     pub vertices: HashMap<u32, BasicBlock>,
     pub label_map: HashMap<String, u32>, // I'm not sure if I need this but I'll hold on to it for ease of use
 }
@@ -245,6 +246,8 @@ fn create_graph(code: Vec<Code>, name: String) -> Graph {
 
     let (blocks_n_parts, label_map, mut index_acc) = make_blocks(code);
 
+    let mut starting_vertex = -1;
+
     for (mut b, s) in blocks_n_parts.into_iter() {
         let mut block = BasicBlock::default();
         let vert = match b[0].clone() {
@@ -268,10 +271,17 @@ fn create_graph(code: Vec<Code>, name: String) -> Graph {
             .collect();
         block.successor = s;
         vertices.insert(vert, block).unwrap_none();
+        // TODO this is a hack-y way to do this but we will leave it for now
+        if starting_vertex == -(1 as i32) {
+            starting_vertex = vert as i32;
+        }
     }
+
+    debug_assert!(starting_vertex != -(1 as i32));
 
     Graph {
         name,
+        starting_vertex,
         vertices,
         label_map,
     }

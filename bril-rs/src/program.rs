@@ -151,7 +151,32 @@ pub enum EffectOps {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ValueOps {
-    //TODo
+    #[serde(rename = "add")]
+    Add,
+    #[serde(rename = "sub")]
+    Sub,
+    #[serde(rename = "mul")]
+    Mul,
+    #[serde(rename = "div")]
+    Div,
+    #[serde(rename = "eq")]
+    Eq,
+    #[serde(rename = "lt")]
+    Lt,
+    #[serde(rename = "gt")]
+    Gt,
+    #[serde(rename = "le")]
+    Le,
+    #[serde(rename = "ge")]
+    Ge,
+    #[serde(rename = "not")]
+    Not,
+    #[serde(rename = "and")]
+    And,
+    #[serde(rename = "or")]
+    Or,
+    #[serde(rename = "call")]
+    Call,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
