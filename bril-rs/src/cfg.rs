@@ -1,10 +1,44 @@
-use crate::program::{Argument, Code, EffectOps, Instruction, Program, Type};
+use crate::program::{Argument, Code, EffectOps, Function, Instruction, Program, Type};
 use std::collections::HashMap;
 use std::convert::From;
 
 #[derive(Debug)]
 pub struct Cfg {
     pub function_graphs: Vec<FunctionGraph>,
+}
+
+impl Program {
+    pub fn to_cfg(self) -> Cfg {
+        Cfg {
+            function_graphs: self
+                .functions
+                .into_iter()
+                .map(|x| FunctionGraph {
+                    name: x.name.clone(),
+                    args: x.args,
+                    return_type: x.return_type,
+                    graph: create_graph(x.instrs, x.name),
+                })
+                .collect(),
+        }
+    }
+}
+
+impl Cfg {
+    pub fn to_program(self) -> Program {
+        Program {
+            functions: self
+                .function_graphs
+                .into_iter()
+                .map(|x| Function {
+                    name: x.name,
+                    args: x.args,
+                    return_type: x.return_type,
+                    instrs: x.graph.do_trace(),
+                })
+                .collect(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -18,7 +52,7 @@ pub struct FunctionGraph {
 #[derive(Debug)]
 pub struct Graph {
     pub name: String,
-    pub starting_vertex : i32,
+    pub starting_vertex: i32,
     pub vertices: HashMap<u32, BasicBlock>,
     pub label_map: HashMap<String, u32>, // I'm not sure if I need this but I'll hold on to it for ease of use
 }
@@ -47,11 +81,61 @@ impl Graph {
                     Successor::Conditional {
                         true_branch,
                         false_branch,
-                    } => format!("\t{} -> {};\n\t{} -> {};\n", x, true_branch, x, false_branch),
+                    } => format!(
+                        "\t{} -> {};\n\t{} -> {};\n",
+                        x, true_branch, x, false_branch
+                    ),
                 }
             })
             .collect::<String>();
         format!("digraph {} {{\n{}{}}}", self.name, nodes, edges)
+    }
+
+    // This is the trivial implementation of tracing
+    // I am going to assume that I added jump instructions to basic blocks that didn't have them but fall through
+    pub fn do_trace(mut self) -> Vec<Code> {
+        let mut code = Vec::new();
+        let mut verts_done = Vec::new();
+        let mut verts_to_do = vec![self.starting_vertex];
+        while let Some(block_idx) = verts_to_do.pop() {
+            let block = self.vertices.remove(&(block_idx as u32)).unwrap();
+            if let Some(label) = block.label {
+                // We are going to take the last instruction off of the list, look at it, and if it is a jump to the label we are about to add, keep it off the list. Otherwise we will add it back on.
+                if let Some(instr) = code.pop() {
+                    match instr {
+                        Code::Instruction(Instruction::Effect {
+                            op: EffectOps::Jump, labels, ..
+                        }) if labels.clone().unwrap()[0] == label => (),
+                        _ => code.push(instr),
+                    }
+                }
+                code.push(Code::Label { label })
+            }
+            code.append(
+                &mut block
+                    .code
+                    .into_iter()
+                    .map(|x| Code::Instruction(x))
+                    .collect(),
+            );
+            verts_done.push(block_idx);
+            let mut try_add = |x| {
+                if !verts_done.contains(&x) {
+                    verts_to_do.push(x)
+                }
+            };
+            match block.successor {
+                Successor::End => (),
+                Successor::Jump(idx) => try_add(idx as i32),
+                Successor::Conditional {
+                    true_branch,
+                    false_branch,
+                } => vec![true_branch, false_branch]
+                    .into_iter()
+                    .for_each(|x| try_add(x as i32)),
+            }
+        }
+        code
     }
 }
 
@@ -92,7 +176,7 @@ impl From<&BasicBlock> for String {
         }
         block
             .into_iter()
-            .map(|x| String::from(x))
+            .map(|x| x.into())
             .collect::<Vec<String>>()
             .join(";\n")
     }
@@ -103,21 +187,6 @@ pub enum Successor {
     End,
     Jump(u32),
     Conditional { true_branch: u32, false_branch: u32 },
-}
-
-pub fn convert_to_cfg(p: Program) -> Cfg {
-    Cfg {
-        function_graphs: p
-            .functions
-            .into_iter()
-            .map(|x| FunctionGraph {
-                name: x.name.clone(),
-                args: x.args,
-                return_type: x.return_type,
-                graph: create_graph(x.instrs, x.name),
-            })
-            .collect(),
-    }
 }
 
 // todo originally I was going to do graph making and blocking together but the mental overhead was high. For now, I'm going make blocks of code first and then make the graph. This can be combined later
@@ -145,6 +214,14 @@ fn make_blocks(code: Vec<Code>) -> (Vec<(Vec<Code>, Successor)>, HashMap<String,
         match i {
             instr @ Code::Label { .. } if current_code.len() == 0 => current_code.push(instr),
             Code::Label { label } => {
+                current_code.push({
+                    Code::Instruction(Instruction::Effect {
+                        op: EffectOps::Jump,
+                        labels: Some(vec![label.clone()]),
+                        args: None,
+                        funcs: None,
+                    })
+                });
                 result.push((current_code, Successor::Jump(get_number(label.clone()))));
                 current_code = vec![Code::Label { label }]
             }

@@ -33,7 +33,7 @@ impl From<Code> for String {
     fn from(item: Code) -> Self {
         match item {
             Code::Label { label } => format!("Label {}", label),
-            Code::Instruction(i) => String::from(i),
+            Code::Instruction(i) => i.into(),
         }
     }
 }

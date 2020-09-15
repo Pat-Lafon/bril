@@ -16,16 +16,10 @@ check:
 
 .PHONY: example
 example:
-	bril2json < ../test/interp/jmp.bril | cargo +nightly run -q | dot -Tpdf -o cfg.pdf
-TESTS := ../test/parse/*.bril \
-	../test/print/*.json \
-	../test/interp*/*.bril \
-	../test/ts*/*.ts \
-	../test/mem/*.bril \
-	../test/fail/*.bril \
-	../examples/test/*/*.bril \
-	../benchmarks/*.bril
+	#bril2json < ../test/interp/jmp.bril | cargo +nightly run -q | dot -Tpdf -o cfg.pdf
+	#bril2json < ../test/interp/jmp.bril | cargo +nightly run -q | brili
 
+TESTS := ../test/interp*/*.bril
 
 .PHONY: test
 test:
