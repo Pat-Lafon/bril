@@ -2,6 +2,12 @@ use crate::program::{Argument, Code, EffectOps, Function, Instruction, Program, 
 use std::collections::HashMap;
 use std::convert::From;
 
+macro_rules! final_label {
+    () => {
+        "%%%%%THIS_IS_THE_END%%%%%".to_string()
+    };
+}
+
 #[derive(Debug)]
 pub struct Cfg {
     pub function_graphs: Vec<FunctionGraph>,
@@ -104,7 +110,9 @@ impl Graph {
                 if let Some(instr) = code.pop() {
                     match instr {
                         Code::Instruction(Instruction::Effect {
-                            op: EffectOps::Jump, labels, ..
+                            op: EffectOps::Jump,
+                            labels,
+                            ..
                         }) if labels.clone().unwrap()[0] == label => (),
                         _ => code.push(instr),
                     }
@@ -120,7 +128,7 @@ impl Graph {
             );
             verts_done.push(block_idx);
             let mut try_add = |x| {
-                if !verts_done.contains(&x) {
+                if !verts_done.contains(&x) && !verts_to_do.contains(&x) {
                     verts_to_do.push(x)
                 }
             };
@@ -134,6 +142,11 @@ impl Graph {
                     .into_iter()
                     .for_each(|x| try_add(x as i32)),
             }
+        }
+        match code.pop() {
+            None => {}
+            Some(Code::Label { label }) if label == "%%%%%THIS_IS_THE_END%%%%%".to_string() => {}
+            Some(x) => code.push(x),
         }
         code
     }
@@ -176,7 +189,7 @@ impl From<&BasicBlock> for String {
         }
         block
             .into_iter()
-            .map(|x| x.into())
+            .map(|x| x.to_string())
             .collect::<Vec<String>>()
             .join(";\n")
     }
@@ -227,21 +240,69 @@ fn make_blocks(code: Vec<Code>) -> (Vec<(Vec<Code>, Successor)>, HashMap<String,
             }
             instr @ Code::Instruction(Instruction::Constant { .. }) => current_code.push(instr),
             instr @ Code::Instruction(Instruction::Value { .. }) => current_code.push(instr),
-            instr
-            @
+
             Code::Instruction(Instruction::Effect {
                 op: EffectOps::Call,
-                ..
+                labels,
+                args,
+                funcs,
             }) => {
-                current_code.push(instr);
+                debug_assert!(labels.is_none());
+                debug_assert!(funcs.as_ref().unwrap().len() == 1);
+                current_code.push(Code::Instruction(Instruction::Effect {
+                    op: EffectOps::Call,
+                    labels,
+                    args,
+                    funcs,
+                }));
             }
-            instr
-            @
+            Code::Instruction(Instruction::Effect {
+                op: EffectOps::Store,
+                labels,
+                args,
+                funcs,
+            }) => {
+                debug_assert!(labels.is_none());
+                debug_assert!(args.as_ref().unwrap().len() == 2);
+                debug_assert!(funcs.is_none());
+                current_code.push(Code::Instruction(Instruction::Effect {
+                    op: EffectOps::Store,
+                    labels,
+                    args,
+                    funcs,
+                }));
+            }
+            Code::Instruction(Instruction::Effect {
+                op: EffectOps::Free,
+                labels,
+                args,
+                funcs,
+            }) => {
+                debug_assert!(labels.is_none());
+                debug_assert!(args.as_ref().unwrap().len() == 1
+            );
+                debug_assert!(funcs.is_none());
+                current_code.push(Code::Instruction(Instruction::Effect {
+                    op: EffectOps::Free,
+                    labels,
+                    args,
+                    funcs,
+                }));
+            }
             Code::Instruction(Instruction::Effect {
                 op: EffectOps::Print,
-                ..
+                labels,
+                args,
+                funcs,
             }) => {
-                current_code.push(instr);
+                debug_assert!(labels.is_none());
+                debug_assert!(funcs.is_none());
+                current_code.push(Code::Instruction(Instruction::Effect {
+                    op: EffectOps::Print,
+                    labels,
+                    args,
+                    funcs,
+                }));
             }
             Code::Instruction(Instruction::Effect {
                 op: EffectOps::Return,
@@ -309,11 +370,35 @@ fn make_blocks(code: Vec<Code>) -> (Vec<(Vec<Code>, Successor)>, HashMap<String,
                 ));
                 current_code = Vec::new();
             }
+            // I'm just going to ignore nop's
+            Code::Instruction(Instruction::Effect {
+                op: EffectOps::Nop,
+                labels,
+                args,
+                funcs,
+            }) => {
+                debug_assert!(labels.is_none());
+                debug_assert!(args.is_none());
+                debug_assert!(funcs.is_none());
+            }
         }
     }
 
     if current_code.len() != 0 {
-        result.push((current_code, Successor::End));
+        let final_label = final_label!();
+        current_code.push({
+            Code::Instruction(Instruction::Effect {
+                op: EffectOps::Jump,
+                labels: Some(vec![final_label.clone()]),
+                args: None,
+                funcs: None,
+            })
+        });
+        result.push((
+            current_code,
+            Successor::Jump(get_number(final_label.clone())),
+        ));
+        result.push((vec![Code::Label { label: final_label }], Successor::End));
     }
     (result, label_map, index_acc)
 }

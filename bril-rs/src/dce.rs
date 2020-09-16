@@ -6,6 +6,10 @@ use std::collections::HashSet;
 fn dce_basic_block(block: &mut BasicBlock) {
     let mut used_vars = HashSet::new();
 
+    if block.code.len() == 0 {
+        return;
+    }
+
     for instr_num in (0..block.code.len() - 1).rev() {
         match block.code[instr_num].clone() {
             Instruction::Constant { dest, .. } if !used_vars.contains(&dest) => {
@@ -43,13 +47,13 @@ fn dce_basic_block(block: &mut BasicBlock) {
 }
 
 fn dce_graph(graph: &mut Graph) {
-    graph.vertices.values_mut().map(dce_basic_block);
+    graph.vertices.values_mut().for_each(dce_basic_block);
 }
 
 impl Cfg {
-    pub fn dead_code_elim(&mut self) {
+    pub fn do_dce(&mut self) {
         self.function_graphs
             .iter_mut()
-            .map(|x| dce_graph(&mut x.graph));
+            .for_each(|x| dce_graph(&mut x.graph));
     }
 }

@@ -17,9 +17,11 @@ check:
 .PHONY: example
 example:
 	#bril2json < ../test/interp/jmp.bril | cargo +nightly run -q | dot -Tpdf -o cfg.pdf
-	#bril2json < ../test/interp/jmp.bril | cargo +nightly run -q | brili
+	bril2json < test/interp/call-with-args.bril | cargo +nightly run -q | brili
 
-TESTS := ../test/interp*/*.bril
+TESTS := test/interp/*.bril \
+		 test/tdce/*.bril \
+		 test/lvn/*.bril
 
 .PHONY: test
 test:

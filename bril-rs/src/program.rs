@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::io::{self, Read};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -9,8 +10,10 @@ pub struct Program {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Function {
     pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub args: Option<Vec<Argument>>,
     #[serde(rename = "type")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub return_type: Option<Type>,
     pub instrs: Vec<Code>,
 }
@@ -29,11 +32,11 @@ pub enum Code {
     Instruction(Instruction),
 }
 
-impl From<Code> for String {
-    fn from(item: Code) -> Self {
-        match item {
-            Code::Label { label } => format!("Label {}", label),
-            Code::Instruction(i) => i.into(),
+impl fmt::Display for Code {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Code::Label { label } => write!(f, "Label {}", label),
+            Code::Instruction(i) => write!(f, "{}", i),
         }
     }
 }
@@ -53,28 +56,44 @@ pub enum Instruction {
         dest: String,
         #[serde(rename = "type")]
         op_type: Type,
+        #[serde(skip_serializing_if = "Option::is_none")]
         args: Option<Vec<String>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         funcs: Option<Vec<String>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         labels: Option<Vec<String>>,
     },
     Effect {
         op: EffectOps,
+        #[serde(skip_serializing_if = "Option::is_none")]
         args: Option<Vec<String>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         funcs: Option<Vec<String>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         labels: Option<Vec<String>>,
     },
 }
 
+impl Instruction {
+    pub fn get_dest(&self) -> Option<String> {
+        match self {
+            Instruction::Constant { dest, .. } => Some(dest.clone()),
+            Instruction::Value { dest, .. } => Some(dest.clone()),
+            Instruction::Effect { .. } => None,
+        }
+    }
+}
+
 // I am going to assume that each of these has been checked on creation so I'm leaving out a bunch of asserts. These can be added if stuff looks weird
-impl From<Instruction> for String {
-    fn from(item: Instruction) -> Self {
-        match item {
+impl fmt::Display for Instruction {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
             Instruction::Constant {
                 op: ConstOps::Const,
                 dest,
                 const_type,
                 value,
-            } => format!("{} : {:?} = const {:?}", dest, const_type, value),
+            } => write!(f, "{} : {:?} = const {:?}", dest, const_type, value),
             Instruction::Value {
                 ..
                 /* op,
@@ -85,19 +104,13 @@ impl From<Instruction> for String {
                 labels, */
             } => unimplemented!(),
             Instruction::Effect {
-                op: EffectOps::Jump,
-
-                labels,
-                ..
-            } => format!("jmp {}", labels.unwrap()[0]),
-            Instruction::Effect {
                 op: EffectOps::Branch,
                 args,
                 labels,
                 ..
             } => {
-                let l = labels.unwrap();
-                format!("br {} {} {}", args.unwrap()[0], l[0], l[1])
+                let l = labels.as_ref().unwrap();
+                write!(f, "br {} {} {}", args.as_ref().unwrap()[0], l[0], l[1])
             }
             Instruction::Effect {
                 op: EffectOps::Call,
@@ -105,24 +118,16 @@ impl From<Instruction> for String {
                 funcs,
                 ..
             } => match args {
-                Some(a) => format!("call {} {}", funcs.unwrap()[0], a.join(" ")),
-                None => "print".to_string(),
+                Some(a) => write!(f, "call {} {}", funcs.as_ref().unwrap()[0], a.join(" ")),
+                None => write!(f, "call"),
             }
             Instruction::Effect {
-                op: EffectOps::Return,
+                op: op @ (EffectOps::Jump | EffectOps::Nop | EffectOps::Return | EffectOps::Print | EffectOps::Store | EffectOps::Free),
                 args,
                 ..
             } => match args {
-                Some(a) => format!("ret {}", a[0]),
-                None => "ret".to_string(),
-            },
-            Instruction::Effect {
-                op: EffectOps::Print,
-                args,
-                ..
-            } => match args {
-                Some(a) => format!("print {}", a.join(" ")),
-                None => "print".to_string(),
+                Some(a) => write!(f, "{} {}", op, a.join(" ")),
+                None => write!(f, "{}", op),
             },
         }
     }
@@ -147,9 +152,30 @@ pub enum EffectOps {
     Return,
     #[serde(rename = "print")]
     Print,
+    #[serde(rename = "nop")]
+    Nop,
+    #[serde(rename = "store")]
+    Store,
+    #[serde(rename = "free")]
+    Free,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+impl fmt::Display for EffectOps {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            EffectOps::Jump => write!(f, "jump"),
+            EffectOps::Branch => write!(f, "br"),
+            EffectOps::Call => write!(f, "call"),
+            EffectOps::Return => write!(f, "ret"),
+            EffectOps::Print => write!(f, "print"),
+            EffectOps::Nop => write!(f, "nop"),
+            EffectOps::Store => write!(f, "store"),
+            EffectOps::Free => write!(f, "free"),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum ValueOps {
     #[serde(rename = "add")]
     Add,
@@ -177,6 +203,8 @@ pub enum ValueOps {
     Or,
     #[serde(rename = "call")]
     Call,
+    #[serde(rename = "alloc")]
+    Alloc,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -185,13 +213,28 @@ pub enum Type {
     Int,
     #[serde(rename = "bool")]
     Bool,
+    /*     PointerType, */
     //TODO There is also some parameterized pointer type
+}
+/*
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(untagged)]
+pub enum PointerType {
+    Pointer { ptr: PrimitiveType },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum PrimitiveType {
+    #[serde(rename = "int")]
+    Int,
+    #[serde(rename = "bool")]
+    Bool,
+} */
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 pub enum Literal {
-    Int(u32),
+    Int(i32),
     Bool(bool),
 }
 
