@@ -5,4 +5,5 @@
 pub mod cfg;
 pub mod dce;
 pub mod lvn;
+pub mod worklist;
 pub mod program;

@@ -82,6 +82,14 @@ impl Instruction {
             Instruction::Effect { .. } => None,
         }
     }
+
+    pub fn get_type(&self) -> Option<Type> {
+        match self {
+            Instruction::Constant { const_type, .. } => Some(const_type.clone()),
+            Instruction::Value { op_type, .. } => Some(op_type.clone()),
+            Instruction::Effect { .. } => None,
+        }
+    }
 }
 
 // I am going to assume that each of these has been checked on creation so I'm leaving out a bunch of asserts. These can be added if stuff looks weird
@@ -203,8 +211,12 @@ pub enum ValueOps {
     Or,
     #[serde(rename = "call")]
     Call,
-    #[serde(rename = "alloc")]
+    #[serde(rename = "id")]
+    Id,
+/*     #[serde(rename = "alloc")]
     Alloc,
+    #[serde(rename = "ptradd")]
+    PointerAdd, */
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -213,23 +225,24 @@ pub enum Type {
     Int,
     #[serde(rename = "bool")]
     Bool,
-    /*     PointerType, */
-    //TODO There is also some parameterized pointer type
-}
-/*
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(untagged)]
-pub enum PointerType {
-    Pointer { ptr: PrimitiveType },
+    #[serde(rename = "ptr")]
+    // Todo this doesn't work yet
+    Pointer(PrimitiveType),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PointerType {
+    ptr: PrimitiveType,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(untagged)]
 pub enum PrimitiveType {
     #[serde(rename = "int")]
     Int,
     #[serde(rename = "bool")]
     Bool,
-} */
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]

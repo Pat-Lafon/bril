@@ -279,8 +279,7 @@ fn make_blocks(code: Vec<Code>) -> (Vec<(Vec<Code>, Successor)>, HashMap<String,
                 funcs,
             }) => {
                 debug_assert!(labels.is_none());
-                debug_assert!(args.as_ref().unwrap().len() == 1
-            );
+                debug_assert!(args.as_ref().unwrap().len() == 1);
                 debug_assert!(funcs.is_none());
                 current_code.push(Code::Instruction(Instruction::Effect {
                     op: EffectOps::Free,
@@ -416,7 +415,14 @@ fn create_graph(code: Vec<Code>, name: String) -> Graph {
             Code::Label { label } => {
                 b.remove(0);
                 block.label = Some(label.to_string());
-                *label_map.get(&label).unwrap()
+                match label_map.get(&label) {
+                    Some(l) => *l,
+                    None => {
+                        let x = index_acc;
+                        index_acc += 1;
+                        x
+                    }
+                }
             }
             _ => {
                 let x = index_acc;
