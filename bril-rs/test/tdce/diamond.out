@@ -1,5 +1,4 @@
 @main {
-  a: int = const 47;
   cond: bool = const true;
   br cond .left .right;
 .left:
@@ -7,7 +6,6 @@
   jmp .end;
 .right:
   a: int = const 2;
-  jmp .end;
 .end:
   print a;
 }

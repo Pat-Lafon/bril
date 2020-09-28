@@ -103,14 +103,27 @@ impl fmt::Display for Instruction {
                 value,
             } => write!(f, "{} : {:?} = const {:?}", dest, const_type, value),
             Instruction::Value {
-                ..
-                /* op,
+                op: ValueOps::Call,
                 dest,
                 op_type,
                 args,
                 funcs,
-                labels, */
-            } => unimplemented!(),
+                ..
+            } => write!(
+                f,
+                "{} : {:?} = call {} {}",
+                dest,
+                op_type,
+                funcs.clone().unwrap()[0],
+                args.clone().unwrap().join(" ")
+            ),
+            Instruction::Value {
+                op,
+                dest,
+                op_type,
+                args,
+                ..
+            } => write!(f, "{} : {:?} = {:?} {}", dest, op_type, op, args.clone().unwrap().join(" ")),
             Instruction::Effect {
                 op: EffectOps::Branch,
                 args,
@@ -128,9 +141,17 @@ impl fmt::Display for Instruction {
             } => match args {
                 Some(a) => write!(f, "call {} {}", funcs.as_ref().unwrap()[0], a.join(" ")),
                 None => write!(f, "call"),
-            }
+            },
             Instruction::Effect {
-                op: op @ (EffectOps::Jump | EffectOps::Nop | EffectOps::Return | EffectOps::Print | EffectOps::Store | EffectOps::Free),
+                op:
+                    op
+                    @
+                    (EffectOps::Jump
+                    | EffectOps::Nop
+                    | EffectOps::Return
+                    | EffectOps::Print
+                    | EffectOps::Store
+                    | EffectOps::Free),
                 args,
                 ..
             } => match args {
@@ -213,7 +234,7 @@ pub enum ValueOps {
     Call,
     #[serde(rename = "id")]
     Id,
-/*     #[serde(rename = "alloc")]
+    /*     #[serde(rename = "alloc")]
     Alloc,
     #[serde(rename = "ptradd")]
     PointerAdd, */

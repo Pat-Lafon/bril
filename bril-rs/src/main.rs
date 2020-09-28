@@ -23,8 +23,9 @@ fn main() {
     }
 
     if args.is_present("dce") {
-        graphs.do_dce();
+        graphs.do_dce_worklist();
     }
+
     /* io::stdout()
                             .write_all(graphs.function_graphs[0].graph.to_dot().as_bytes())
     .unwrap(); */

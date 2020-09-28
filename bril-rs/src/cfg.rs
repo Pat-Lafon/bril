@@ -129,7 +129,15 @@ impl Graph {
             verts_done.push(block_idx);
             let mut try_add = |x| {
                 if !verts_done.contains(&x) && !verts_to_do.contains(&x) {
-                    verts_to_do.push(x)
+                    if let Successor::Jump(i) = self.vertices.get(&(x as u32)).unwrap().successor {
+                        if self.label_map.get(&final_label!()).unwrap() == &i {
+                            verts_to_do.insert(0, x)
+                        } else {
+                            verts_to_do.push(x)
+                        }
+                    } else {
+                        verts_to_do.push(x)
+                    }
                 }
             };
             match block.successor {
@@ -138,9 +146,7 @@ impl Graph {
                 Successor::Conditional {
                     true_branch,
                     false_branch,
-                } => vec![true_branch, false_branch]
-                    .into_iter()
-                    .for_each(|x| try_add(x as i32)),
+                } => {try_add(false_branch as i32); try_add(true_branch as i32)},
             }
         }
         match code.pop() {
@@ -152,11 +158,12 @@ impl Graph {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BasicBlock {
     pub label: Option<String>,
+    pub index: u32,
     pub code: Vec<Instruction>,
-    //pub predecessor: Option<u32>,
+    pub predecessor: Vec<u32>,
     pub successor: Successor,
 }
 
@@ -164,8 +171,9 @@ impl Default for BasicBlock {
     fn default() -> BasicBlock {
         BasicBlock {
             label: None,
+            index: 0,
             code: Vec::new(),
-            //predecessor: None,
+            predecessor: Vec::new(),
             successor: Successor::End,
         }
     }
@@ -195,11 +203,25 @@ impl From<&BasicBlock> for String {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Successor {
     End,
     Jump(u32),
     Conditional { true_branch: u32, false_branch: u32 },
+}
+
+// todo write many of the successor pattern matches to use this
+impl From<&Successor> for Vec<u32> {
+    fn from(item: &Successor) -> Self {
+        match item {
+            Successor::End => Vec::new(),
+            Successor::Jump(i) => vec![*i],
+            Successor::Conditional {
+                true_branch,
+                false_branch,
+            } => vec![*true_branch, *false_branch],
+        }
+    }
 }
 
 // todo originally I was going to do graph making and blocking together but the mental overhead was high. For now, I'm going make blocks of code first and then make the graph. This can be combined later
@@ -402,6 +424,23 @@ fn make_blocks(code: Vec<Code>) -> (Vec<(Vec<Code>, Successor)>, HashMap<String,
     (result, label_map, index_acc)
 }
 
+fn add_back_edges(graph: &mut HashMap<u32, BasicBlock>) {
+    let indices: Vec<u32> = graph.keys().map(|x| *x).collect();
+    for i in indices.into_iter() {
+        match graph.get(&i).unwrap().clone().successor {
+            Successor::End => (),
+            Successor::Jump(succ) => graph.get_mut(&succ).unwrap().predecessor.push(i),
+            Successor::Conditional {
+                true_branch,
+                false_branch,
+            } => {
+                graph.get_mut(&true_branch).unwrap().predecessor.push(i);
+                graph.get_mut(&false_branch).unwrap().predecessor.push(i)
+            }
+        }
+    }
+}
+
 fn create_graph(code: Vec<Code>, name: String) -> Graph {
     let mut vertices: HashMap<u32, BasicBlock> = HashMap::new();
 
@@ -438,6 +477,7 @@ fn create_graph(code: Vec<Code>, name: String) -> Graph {
             })
             .collect();
         block.successor = s;
+        block.index = vert;
         vertices.insert(vert, block).unwrap_none();
         // TODO this is a hack-y way to do this but we will leave it for now
         if starting_vertex == -(1 as i32) {
@@ -446,6 +486,8 @@ fn create_graph(code: Vec<Code>, name: String) -> Graph {
     }
 
     debug_assert!(starting_vertex != -(1 as i32));
+
+    add_back_edges(&mut vertices);
 
     Graph {
         name,
