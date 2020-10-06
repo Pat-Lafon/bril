@@ -23,7 +23,7 @@ impl Program {
                     name: x.name.clone(),
                     args: x.args,
                     return_type: x.return_type,
-                    graph: create_graph(x.instrs, x.name),
+                    graph: create_graph(x.instrs, x.name).do_prune(),
                 })
                 .collect(),
         }
@@ -40,7 +40,7 @@ impl Cfg {
                     name: x.name,
                     args: x.args,
                     return_type: x.return_type,
-                    instrs: x.graph.do_trace(),
+                    instrs: x.graph.create_trace(),
                 })
                 .collect(),
         }
@@ -58,7 +58,7 @@ pub struct FunctionGraph {
 #[derive(Debug)]
 pub struct Graph {
     pub name: String,
-    pub starting_vertex: i32,
+    pub starting_vertex: u32,
     pub vertices: HashMap<u32, BasicBlock>,
     pub label_map: HashMap<String, u32>, // I'm not sure if I need this but I'll hold on to it for ease of use
 }
@@ -81,6 +81,7 @@ impl Graph {
             .keys()
             .map(|x| {
                 let ends = self.vertices.get(x).unwrap();
+                // todo somehow clean this up with to_vec() and a fold/map
                 match ends.successor {
                     Successor::End => "".to_string(),
                     Successor::Jump(i) => format!("\t{} -> {};\n", x, i),
@@ -99,12 +100,12 @@ impl Graph {
 
     // This is the trivial implementation of tracing
     // I am going to assume that I added jump instructions to basic blocks that didn't have them but fall through
-    pub fn do_trace(mut self) -> Vec<Code> {
+    pub fn create_trace(mut self) -> Vec<Code> {
         let mut code = Vec::new();
         let mut verts_done = Vec::new();
         let mut verts_to_do = vec![self.starting_vertex];
         while let Some(block_idx) = verts_to_do.pop() {
-            let block = self.vertices.remove(&(block_idx as u32)).unwrap();
+            let block = self.vertices.remove(&(block_idx)).unwrap();
             if let Some(label) = block.label {
                 // We are going to take the last instruction off of the list, look at it, and if it is a jump to the label we are about to add, keep it off the list. Otherwise we will add it back on.
                 if let Some(instr) = code.pop() {
@@ -129,7 +130,7 @@ impl Graph {
             verts_done.push(block_idx);
             let mut try_add = |x| {
                 if !verts_done.contains(&x) && !verts_to_do.contains(&x) {
-                    if let Successor::Jump(i) = self.vertices.get(&(x as u32)).unwrap().successor {
+                    if let Successor::Jump(i) = self.vertices.get(&x).unwrap().successor {
                         if self.label_map.get(&final_label!()).unwrap() == &i {
                             verts_to_do.insert(0, x)
                         } else {
@@ -140,14 +141,12 @@ impl Graph {
                     }
                 }
             };
-            match block.successor {
-                Successor::End => (),
-                Successor::Jump(idx) => try_add(idx as i32),
-                Successor::Conditional {
-                    true_branch,
-                    false_branch,
-                } => {try_add(false_branch as i32); try_add(true_branch as i32)},
-            }
+            block
+                .successor
+                .to_vec()
+                .into_iter()
+                .rev()
+                .for_each(|x| try_add(x));
         }
         match code.pop() {
             None => {}
@@ -155,6 +154,42 @@ impl Graph {
             Some(x) => code.push(x),
         }
         code
+    }
+
+    // I'm basically going to start at the starting block and find all the blocks I can reach from there. Then delete all the blocks that get missed
+    pub fn do_prune(mut self) -> Self {
+        let mut verts: Vec<u32> = self.vertices.keys().copied().collect();
+        let mut worklist = vec![verts.remove_item(&self.starting_vertex).unwrap()];
+        while let Some(idx) = worklist.pop() {
+            self.vertices
+                .get(&idx)
+                .unwrap()
+                .successor
+                .to_vec()
+                .into_iter()
+                .for_each(|x| match verts.remove_item(&x) {
+                    Some(i) => worklist.push(i),
+                    None => (),
+                })
+        }
+        verts
+            .into_iter()
+            .for_each(|x| match self.vertices.remove(&x) {
+                None => panic!("whoops, Was there an invalid block or something?"),
+                Some(b) => {
+                    b.successor
+                        .to_vec()
+                        .into_iter()
+                        .for_each(|y| match self.vertices.get_mut(&y) {
+                            Some(s) => {
+                                s.predecessor.remove_item(&x);
+                            }
+                            None => (),
+                        })
+                }
+            });
+
+        self
     }
 }
 
@@ -210,7 +245,12 @@ pub enum Successor {
     Conditional { true_branch: u32, false_branch: u32 },
 }
 
-// todo write many of the successor pattern matches to use this
+impl Successor {
+    pub fn to_vec(&self) -> Vec<u32> {
+        self.into()
+    }
+}
+
 impl From<&Successor> for Vec<u32> {
     fn from(item: &Successor) -> Self {
         match item {
@@ -427,17 +467,13 @@ fn make_blocks(code: Vec<Code>) -> (Vec<(Vec<Code>, Successor)>, HashMap<String,
 fn add_back_edges(graph: &mut HashMap<u32, BasicBlock>) {
     let indices: Vec<u32> = graph.keys().map(|x| *x).collect();
     for i in indices.into_iter() {
-        match graph.get(&i).unwrap().clone().successor {
-            Successor::End => (),
-            Successor::Jump(succ) => graph.get_mut(&succ).unwrap().predecessor.push(i),
-            Successor::Conditional {
-                true_branch,
-                false_branch,
-            } => {
-                graph.get_mut(&true_branch).unwrap().predecessor.push(i);
-                graph.get_mut(&false_branch).unwrap().predecessor.push(i)
-            }
-        }
+        graph
+            .get(&i)
+            .unwrap()
+            .successor
+            .to_vec()
+            .into_iter()
+            .for_each(|x| graph.get_mut(&x).unwrap().predecessor.push(i))
     }
 }
 
@@ -446,7 +482,7 @@ fn create_graph(code: Vec<Code>, name: String) -> Graph {
 
     let (blocks_n_parts, label_map, mut index_acc) = make_blocks(code);
 
-    let mut starting_vertex = -1;
+    let mut starting_vertex = None;
 
     for (mut b, s) in blocks_n_parts.into_iter() {
         let mut block = BasicBlock::default();
@@ -480,18 +516,16 @@ fn create_graph(code: Vec<Code>, name: String) -> Graph {
         block.index = vert;
         vertices.insert(vert, block).unwrap_none();
         // TODO this is a hack-y way to do this but we will leave it for now
-        if starting_vertex == -(1 as i32) {
-            starting_vertex = vert as i32;
+        if starting_vertex.is_none() {
+            starting_vertex = Some(vert);
         }
     }
-
-    debug_assert!(starting_vertex != -(1 as i32));
 
     add_back_edges(&mut vertices);
 
     Graph {
         name,
-        starting_vertex,
+        starting_vertex: starting_vertex.unwrap(),
         vertices,
         label_map,
     }

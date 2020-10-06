@@ -6,6 +6,7 @@
 #![feature(iterator_fold_self)]
 pub mod cfg;
 pub mod dce;
+pub mod dom;
 pub mod lvn;
 pub mod program;
 pub mod worklist;

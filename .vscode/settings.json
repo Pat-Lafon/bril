@@ -1,6 +1,25 @@
 {
-    "cSpell.words": [
-        "Bril",
-        "instrs"
-    ]
+  "cSpell.words": [
+    "Bril",
+    "instrs"
+  ],
+  "files.exclude": {
+    "bril-ts": true,
+    "bril-txt": true,
+    "bril-vim": true,
+    "brilirs": true,
+    "docs": true,
+    "examples": true,
+    "src": true,
+    ".gitignore": true,
+    "book.toml": true,
+    "venv": true,
+    "type-infer": true,
+    "LICENSE": true,
+    "bril-ocaml": true,
+    ".vscode": true,
+    ".github": true,
+    "README.md": true,
+    "Makefile": true
+  }
 }

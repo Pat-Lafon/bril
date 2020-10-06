@@ -123,7 +123,14 @@ impl fmt::Display for Instruction {
                 op_type,
                 args,
                 ..
-            } => write!(f, "{} : {:?} = {:?} {}", dest, op_type, op, args.clone().unwrap().join(" ")),
+            } => write!(
+                f,
+                "{} : {:?} = {:?} {}",
+                dest,
+                op_type,
+                op,
+                args.clone().unwrap().join(" ")
+            ),
             Instruction::Effect {
                 op: EffectOps::Branch,
                 args,

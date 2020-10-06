@@ -18,12 +18,15 @@ fn main() {
     /* io::stdout()
                         .write_all(graphs.function_graphs[0].graph.to_dot().as_bytes())
     .unwrap(); */
+
+    //graphs.do_dominator_tree();
+
     if args.is_present("lvn") {
         graphs.do_lvn();
     }
 
     if args.is_present("dce") {
-        graphs.do_dce_worklist();
+        graphs.do_dce();
     }
 
     /* io::stdout()

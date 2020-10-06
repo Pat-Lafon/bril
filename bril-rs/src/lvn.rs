@@ -6,7 +6,6 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 enum LvnValue {
     Const(Literal),
-    // TODO what about unary not
     Op(ValueOps, Vec<u32>),
 }
 
@@ -175,9 +174,9 @@ fn convert_args(op: ValueOps, args: Vec<Literal>) -> Option<Literal> {
         }
         ValueOps::Id => {
             if args.len() == 1 {
-                return Some(args[0].clone())
+                return Some(args[0].clone());
             }
-        },
+        }
         ValueOps::Call => return None,
     }
     None
@@ -273,6 +272,7 @@ fn update_instruction(
     }
 }
 
+// todo I think this is only needed in local value numbering because we haven't handled redefinition
 fn clear_dest(dest: &String, table: &mut Vec<(LvnValue, String)>) {
     match table.iter().position(|(_, x)| dest == x) {
         Some(i) => table[i] = (LvnValue::Op(ValueOps::Not, Vec::new()), "%%%".to_string()),

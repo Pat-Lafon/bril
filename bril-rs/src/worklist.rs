@@ -3,8 +3,8 @@ use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
 pub struct Constraints<B: Clone + PartialEq + std::fmt::Debug> {
-    in_constraints: HashMap<u32, B>,
-    out_constraints: HashMap<u32, B>,
+    pub in_constraints: HashMap<u32, B>,
+    pub out_constraints: HashMap<u32, B>,
 }
 
 impl<B: Clone + PartialEq + std::fmt::Debug> Constraints<B> {
@@ -63,7 +63,9 @@ fn worklist_algo_helper<B: Clone + PartialEq + std::fmt::Debug>(
             )
         } else {
             meet(
-                Into::<Vec<u32>>::into(&block.successor)
+                block
+                    .successor
+                    .to_vec()
                     .iter()
                     .map(|x| constraints.get_out_const(x).clone())
                     .collect(),
@@ -75,7 +77,7 @@ fn worklist_algo_helper<B: Clone + PartialEq + std::fmt::Debug>(
             constraints.set_out_const(node, new_out_constraints);
 
             for i in if forward {
-                Into::<Vec<u32>>::into(&block.successor).into_iter()
+                block.successor.to_vec().into_iter()
             } else {
                 block.predecessor.clone().into_iter()
             } {
@@ -94,13 +96,7 @@ impl Graph {
         meet: fn(Vec<B>) -> B,
         forward: bool,
     ) -> Constraints<B> {
-        //graph.vertices.values_mut().for_each(dce_basic_block);
-        let worklist = self
-            .vertices
-            .clone()
-            .into_keys()
-            .into_iter()
-            .collect::<Vec<u32>>();
+        let worklist = self.vertices.keys().copied().collect::<Vec<u32>>();
         let constraints = new_constraints(self, &worklist, init, transfer);
         worklist_algo_helper(self, transfer, meet, forward, worklist, constraints)
     }
