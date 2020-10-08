@@ -23,15 +23,15 @@ impl<B: Clone + PartialEq + std::fmt::Debug> Constraints<B> {
 }
 
 fn new_constraints<B: Clone + PartialEq + std::fmt::Debug>(
-    graph: &mut Graph,
+    graph: &Graph,
     worklist: &Vec<u32>,
     init: fn(&BasicBlock) -> B,
-    transfer: fn(B, &mut BasicBlock) -> B,
+    transfer: fn(B, &BasicBlock) -> B,
 ) -> Constraints<B> {
     let mut in_constraints = HashMap::new();
     let mut out_constraints = HashMap::new();
     for i in worklist {
-        let block = graph.vertices.get_mut(i).unwrap();
+        let block = graph.vertices.get(i).unwrap();
         let in_b = init(block);
         in_constraints.insert(*i, in_b.clone());
         out_constraints.insert(*i, transfer(in_b, block));
@@ -43,15 +43,15 @@ fn new_constraints<B: Clone + PartialEq + std::fmt::Debug>(
 }
 
 fn worklist_algo_helper<B: Clone + PartialEq + std::fmt::Debug>(
-    graph: &mut Graph,
-    transfer: fn(B, &mut BasicBlock) -> B,
+    graph: &Graph,
+    transfer: fn(B, &BasicBlock) -> B,
     meet: fn(Vec<B>) -> B,
     forward: bool,
     mut worklist: Vec<u32>,
     mut constraints: Constraints<B>,
 ) -> Constraints<B> {
     while let Some(node) = worklist.pop() {
-        let mut block = graph.vertices.get_mut(&node).unwrap();
+        let mut block = graph.vertices.get(&node).unwrap();
         let old_in_constraints = constraints.get_in_const(&node);
         let in_constraints = if forward {
             meet(
@@ -90,9 +90,9 @@ fn worklist_algo_helper<B: Clone + PartialEq + std::fmt::Debug>(
 
 impl Graph {
     pub fn worklist_algo<B: Clone + PartialEq + std::fmt::Debug>(
-        &mut self,
+        &self,
         init: fn(&BasicBlock) -> B,
-        transfer: fn(B, &mut BasicBlock) -> B,
+        transfer: fn(B, &BasicBlock) -> B,
         meet: fn(Vec<B>) -> B,
         forward: bool,
     ) -> Constraints<B> {

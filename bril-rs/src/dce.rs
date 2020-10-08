@@ -4,7 +4,7 @@ use crate::worklist::Constraints;
 
 use std::collections::HashSet;
 
-fn transfer(mut in_constraint: HashSet<String>, block: &mut BasicBlock) -> HashSet<String> {
+fn transfer(mut in_constraint: HashSet<String>, block: &BasicBlock) -> HashSet<String> {
     if block.code.len() == 0 {
         return in_constraint;
     }
@@ -48,7 +48,7 @@ fn meet(vec_of_sets: Vec<HashSet<String>>) -> HashSet<String> {
     }
 }
 
-fn liveness(graph: &mut Graph) -> Constraints<HashSet<String>> {
+fn liveness(graph: &Graph) -> Constraints<HashSet<String>> {
     graph.worklist_algo(|_| HashSet::new(), transfer, meet, false)
 }
 

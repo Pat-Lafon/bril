@@ -18,7 +18,7 @@ check:
 example:
 	#bril2json < ../test/interp/jmp.bril | cargo +nightly run -q | dot -Tpdf -o cfg.pdf
 	# bril2json < test/interp/alloc.bril | cargo +nightly run -q
-	bril2json < test/interp/ret.bril | cargo +nightly run -q 
+	bril2json < test/tdce/combo.bril | cargo +nightly run -q -- --dce --lvn | bril2txt
 
 TESTS := test/interp/*.bril \
 		 test/tdce/*.bril \

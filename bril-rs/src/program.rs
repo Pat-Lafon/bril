@@ -75,11 +75,98 @@ pub enum Instruction {
 }
 
 impl Instruction {
+    // for ssa
+    pub fn get_args(&self) -> Option<Option<Vec<String>>> {
+        match self {
+            Instruction::Constant { .. } => None,
+            Instruction::Value { args, .. } => Some(args.clone()),
+            Instruction::Effect { args, .. } => Some(args.clone()),
+        }
+    }
+    pub fn set_args(&mut self, new_args: Option<Vec<String>>) {
+        match self.clone() {
+            Instruction::Constant { .. } => panic!("There is no args to set"),
+            Instruction::Value {
+                op,
+                dest,
+                op_type,
+                args,
+                funcs,
+                labels,
+            } => {
+                *self = Instruction::Value {
+                    op,
+                    dest,
+                    op_type,
+                    args: new_args,
+                    funcs,
+                    labels,
+                }
+            }
+            Instruction::Effect {
+                op,
+                args,
+                funcs,
+                labels,
+            } => {
+                *self = Instruction::Effect {
+                    op,
+                    args: new_args,
+                    funcs,
+                    labels,
+                }
+            }
+        }
+    }
+    pub fn not_phi(&self) -> bool {
+        match self {
+            Instruction::Value {
+                op: ValueOps::Phi, ..
+            } => false,
+            _ => true,
+        }
+    }
+
     pub fn get_dest(&self) -> Option<String> {
         match self {
             Instruction::Constant { dest, .. } => Some(dest.clone()),
             Instruction::Value { dest, .. } => Some(dest.clone()),
             Instruction::Effect { .. } => None,
+        }
+    }
+    pub fn set_dest(&mut self, new_dest: String) {
+        match self.clone() {
+            Instruction::Constant {
+                op,
+                dest,
+                const_type,
+                value,
+            } => {
+                *self = Instruction::Constant {
+                    op,
+                    dest: new_dest,
+                    const_type,
+                    value,
+                }
+            }
+            Instruction::Value {
+                op,
+                dest,
+                op_type,
+                args,
+                funcs,
+                labels,
+            } => {
+                *self = Instruction::Value {
+                    op,
+                    dest: new_dest,
+                    op_type,
+                    args,
+                    funcs,
+                    labels,
+                }
+            }
+            Instruction::Effect { .. } => panic!("There is no dest to be set"),
         }
     }
 
@@ -241,6 +328,8 @@ pub enum ValueOps {
     Call,
     #[serde(rename = "id")]
     Id,
+    #[serde(rename = "phi")]
+    Phi,
     /*     #[serde(rename = "alloc")]
     Alloc,
     #[serde(rename = "ptradd")]

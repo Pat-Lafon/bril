@@ -106,7 +106,8 @@ impl Graph {
         let mut verts_to_do = vec![self.starting_vertex];
         while let Some(block_idx) = verts_to_do.pop() {
             let block = self.vertices.remove(&(block_idx)).unwrap();
-            if let Some(label) = block.label {
+            let label = block.label;
+            {
                 // We are going to take the last instruction off of the list, look at it, and if it is a jump to the label we are about to add, keep it off the list. Otherwise we will add it back on.
                 if let Some(instr) = code.pop() {
                     match instr {
@@ -195,7 +196,7 @@ impl Graph {
 
 #[derive(Debug, Clone)]
 pub struct BasicBlock {
-    pub label: Option<String>,
+    pub label: String,
     pub index: u32,
     pub code: Vec<Instruction>,
     pub predecessor: Vec<u32>,
@@ -205,7 +206,7 @@ pub struct BasicBlock {
 impl Default for BasicBlock {
     fn default() -> BasicBlock {
         BasicBlock {
-            label: None,
+            label: "".to_string(),
             index: 0,
             code: Vec::new(),
             predecessor: Vec::new(),
@@ -221,15 +222,12 @@ impl From<&BasicBlock> for String {
             .iter()
             .map(|x| Code::Instruction(x.clone()))
             .collect();
-        match &item.label {
-            Some(l) => block.insert(
-                0,
-                Code::Label {
-                    label: l.to_string(),
-                },
-            ),
-            None => (),
-        }
+        block.insert(
+            0,
+            Code::Label {
+                label: item.label.to_string(),
+            },
+        );
         block
             .into_iter()
             .map(|x| x.to_string())
@@ -489,7 +487,7 @@ fn create_graph(code: Vec<Code>, name: String) -> Graph {
         let vert = match b[0].clone() {
             Code::Label { label } => {
                 b.remove(0);
-                block.label = Some(label.to_string());
+                block.label = label.to_string();
                 match label_map.get(&label) {
                     Some(l) => *l,
                     None => {
@@ -514,6 +512,16 @@ fn create_graph(code: Vec<Code>, name: String) -> Graph {
             .collect();
         block.successor = s;
         block.index = vert;
+
+        if block.label == "" {
+            // TODO this is hack-y
+            // So if there isn't a label, we need to add it. This can happen either for the first basic block of a function or if there is a jump/ret followed by code without a label.
+            // The second case is unreachable code so those blocks should be removed
+            // So we should only have one entry label in the end but I can't be sure
+            // So I worry about this and it should be checked/made less hack-y later
+            block.label = "entry".to_string()
+        }
+
         vertices.insert(vert, block).unwrap_none();
         // TODO this is a hack-y way to do this but we will leave it for now
         if starting_vertex.is_none() {

@@ -177,7 +177,7 @@ fn convert_args(op: ValueOps, args: Vec<Literal>) -> Option<Literal> {
                 return Some(args[0].clone());
             }
         }
-        ValueOps::Call => return None,
+        ValueOps::Call | ValueOps::Phi => return None,
     }
     None
 }
