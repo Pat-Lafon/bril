@@ -1,4 +1,4 @@
-use crate::program::{Argument, Code, EffectOps, Function, Instruction, Program, Type};
+use crate::program::{Argument, Code, ValueOps, EffectOps, Function, Instruction, Program, Type};
 use std::collections::HashMap;
 use std::convert::From;
 
@@ -125,14 +125,25 @@ impl Graph {
                 &mut block
                     .code
                     .into_iter()
-                    .map(|x| Code::Instruction(x))
+                    .filter_map(|x| match x.clone() {
+                        Instruction::Value {
+                            op : ValueOps::Id,
+                            dest,
+                            op_type,
+                            args : Some(arg),
+                            funcs,
+                            labels
+                        } if dest == arg[0] && arg.len() == 1=> None,
+                        _ => Some(Code::Instruction(x))
+                    })
                     .collect(),
             );
             verts_done.push(block_idx);
             let mut try_add = |x| {
                 if !verts_done.contains(&x) && !verts_to_do.contains(&x) {
                     if let Successor::Jump(i) = self.vertices.get(&x).unwrap().successor {
-                        if self.label_map.get(&final_label!()).unwrap() == &i {
+                        // If there isn't a final_label, then give a dummy number that will never be true
+                        if self.label_map.get(&final_label!()).unwrap_or(&u32::MAX) == &i {
                             verts_to_do.insert(0, x)
                         } else {
                             verts_to_do.push(x)

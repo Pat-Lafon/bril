@@ -390,11 +390,28 @@ fn undo_ssa(graph: &mut Graph) {
     })
 }
 
-/*
-todo for ssa
+fn fix(s: String) -> String {
+    (&s).strip_suffix(|x: char| x.is_numeric())
+        .unwrap_or(&s)
+        .strip_suffix("_")
+        .unwrap_or(&s)
+        .to_string()
+}
 
-Remove phi nodes and undo variable naming?
-*/
+fn fix_names(graph: &mut Graph) {
+    graph.vertices.iter_mut().for_each(|(_, b)| {
+        b.code.iter_mut().for_each(|i| {
+            match i.get_dest() {
+                Some(d) => i.set_dest(fix(d)),
+                None => (),
+            };
+            match i.get_args() {
+                Some(Some(args)) => i.set_args(Some(args.into_iter().map(fix).collect())),
+                Some(None) | None => (),
+            }
+        })
+    })
+}
 
 impl Cfg {
     pub fn to_ssa(&mut self) {
@@ -404,8 +421,13 @@ impl Cfg {
         });
     }
     pub fn from_ssa(&mut self) {
-        self.function_graphs.iter_mut().for_each(|x| {
-            undo_ssa(&mut x.graph);
-        });
+        self.function_graphs
+            .iter_mut()
+            .for_each(|x| undo_ssa(&mut x.graph));
+    }
+    pub fn fix_variable_names(&mut self) {
+        self.function_graphs
+            .iter_mut()
+            .for_each(|x| fix_names(&mut x.graph));
     }
 }

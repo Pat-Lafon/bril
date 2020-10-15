@@ -1,4 +1,5 @@
 @main {
+.entry:
   prod1: int = const 36;
   print prod1;
 }

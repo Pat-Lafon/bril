@@ -1,4 +1,5 @@
 @main {
+.entry:
   x: int = const 4;
   print x;
 }

@@ -9,6 +9,11 @@ fn main() {
         //.arg(Arg::with_name("json").index(1).required(true))
         .arg(Arg::with_name("dce").long("dce").takes_value(false))
         .arg(Arg::with_name("lvn").long("lvn").takes_value(false))
+        .arg(
+            Arg::with_name("fix_names")
+                .long("fix_names")
+                .takes_value(false),
+        )
         .get_matches();
 
     let program = load_program();
@@ -16,12 +21,14 @@ fn main() {
     let mut graphs = program.to_cfg();
     //println!("{:?}", graphs);
     /* io::stdout()
-                        .write_all(graphs.function_graphs[0].graph.to_dot().as_bytes())
-    .unwrap(); */
+                           .write_all(graphs.function_graphs[0].graph.to_dot().as_bytes())
+       .unwrap();
 
+       return;
+    */
     //graphs.do_dominator_tree();
 
-    graphs.to_ssa();
+    //graphs.to_ssa();
 
     if args.is_present("lvn") {
         graphs.do_lvn();
@@ -31,7 +38,11 @@ fn main() {
         graphs.do_dce();
     }
 
-    graphs.from_ssa();
+    //graphs.from_ssa();
+
+    /* if args.is_present("fix_names") {
+        graphs.fix_variable_names();
+    } */
 
     /* io::stdout()
                             .write_all(graphs.function_graphs[0].graph.to_dot().as_bytes())

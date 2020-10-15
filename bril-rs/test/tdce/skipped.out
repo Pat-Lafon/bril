@@ -1,4 +1,5 @@
 @main {
+.entry:
   a: int = const 4;
 .end:
   print a;

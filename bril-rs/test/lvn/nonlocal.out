@@ -1,4 +1,5 @@
 @main {
+.entry:
   a: int = const 4;
   b: int = const 2;
   sum1: int = add a b;
