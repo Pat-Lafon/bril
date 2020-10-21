@@ -1,4 +1,4 @@
-use crate::program::{Argument, Code, ValueOps, EffectOps, Function, Instruction, Program, Type};
+use crate::program::{Argument, Code, EffectOps, Function, Instruction, Program, Type, ValueOps};
 use std::collections::HashMap;
 use std::convert::From;
 
@@ -81,18 +81,7 @@ impl Graph {
             .keys()
             .map(|x| {
                 let ends = self.vertices.get(x).unwrap();
-                // todo somehow clean this up with to_vec() and a fold/map
-                match ends.successor {
-                    Successor::End => "".to_string(),
-                    Successor::Jump(i) => format!("\t{} -> {};\n", x, i),
-                    Successor::Conditional {
-                        true_branch,
-                        false_branch,
-                    } => format!(
-                        "\t{} -> {};\n\t{} -> {};\n",
-                        x, true_branch, x, false_branch
-                    ),
-                }
+                ends.successor.to_vec().into_iter().map(|i| format!("\t{} -> {};\n", x, i)).collect::<String>()
             })
             .collect::<String>();
         format!("digraph {} {{\n{}{}}}", self.name, nodes, edges)
@@ -107,34 +96,37 @@ impl Graph {
         while let Some(block_idx) = verts_to_do.pop() {
             let block = self.vertices.remove(&(block_idx)).unwrap();
             let label = block.label;
-            {
-                // We are going to take the last instruction off of the list, look at it, and if it is a jump to the label we are about to add, keep it off the list. Otherwise we will add it back on.
-                if let Some(instr) = code.pop() {
-                    match instr {
-                        Code::Instruction(Instruction::Effect {
-                            op: EffectOps::Jump,
-                            labels,
-                            ..
-                        }) if labels.clone().unwrap()[0] == label => (),
-                        _ => code.push(instr),
-                    }
+
+            // We are going to take the last instruction off of the list, look at it, and if it is a jump to the label we are about to add, keep it off the list. Otherwise we will add it back on.
+            if let Some(instr) = code.pop() {
+                match instr {
+                    Code::Instruction(Instruction::Effect {
+                        op: EffectOps::Jump,
+                        labels,
+                        ..
+                    }) if labels.clone().unwrap()[0] == label => (),
+                    _ => code.push(instr),
                 }
-                code.push(Code::Label { label })
             }
+            code.push(Code::Label { label });
+
             code.append(
+                // We are filtering out all identity operations like x = id x
+                // This probably doesn't do much if you were in ssa and didn't demangle names
+                // It doesn't hurt and I will assume we do so that we can eliminate some extra operations that are duds
                 &mut block
                     .code
                     .into_iter()
                     .filter_map(|x| match x.clone() {
                         Instruction::Value {
-                            op : ValueOps::Id,
+                            op: ValueOps::Id,
                             dest,
-                            op_type,
-                            args : Some(arg),
-                            funcs,
-                            labels
-                        } if dest == arg[0] && arg.len() == 1=> None,
-                        _ => Some(Code::Instruction(x))
+                            op_type:_,
+                            args: Some(arg),
+                            funcs:_,
+                            labels:_,
+                        } if dest == arg[0] && arg.len() == 1 => None,
+                        _ => Some(Code::Instruction(x)),
                     })
                     .collect(),
             );
@@ -143,6 +135,7 @@ impl Graph {
                 if !verts_done.contains(&x) && !verts_to_do.contains(&x) {
                     if let Successor::Jump(i) = self.vertices.get(&x).unwrap().successor {
                         // If there isn't a final_label, then give a dummy number that will never be true
+                        // Else, insert it so it is the last block to be done
                         if self.label_map.get(&final_label!()).unwrap_or(&u32::MAX) == &i {
                             verts_to_do.insert(0, x)
                         } else {
@@ -160,10 +153,10 @@ impl Graph {
                 .rev()
                 .for_each(|x| try_add(x));
         }
-        match code.pop() {
-            None => {}
-            Some(Code::Label { label }) if label == "%%%%%THIS_IS_THE_END%%%%%".to_string() => {}
-            Some(x) => code.push(x),
+        match code.last() {
+            // Take off a dead label at the end for cleanliness
+            Some(Code::Label { label:_ }) => {code.pop();},
+            _ => (),
         }
         code
     }
@@ -171,7 +164,8 @@ impl Graph {
     // I'm basically going to start at the starting block and find all the blocks I can reach from there. Then delete all the blocks that get missed
     pub fn do_prune(mut self) -> Self {
         let mut verts: Vec<u32> = self.vertices.keys().copied().collect();
-        let mut worklist = vec![verts.remove_item(&self.starting_vertex).unwrap()];
+        let remove_item = |vec : &mut Vec<u32>, item: u32| vec.iter().position(|x| *x == item).map(|i| vec.remove(i));
+        let mut worklist = vec![remove_item(&mut verts, self.starting_vertex).unwrap()];
         while let Some(idx) = worklist.pop() {
             self.vertices
                 .get(&idx)
@@ -179,11 +173,12 @@ impl Graph {
                 .successor
                 .to_vec()
                 .into_iter()
-                .for_each(|x| match verts.remove_item(&x) {
+                .for_each(|x| match remove_item(&mut verts, x) {
                     Some(i) => worklist.push(i),
                     None => (),
                 })
         }
+        // Remaining verts are not reachable
         verts
             .into_iter()
             .for_each(|x| match self.vertices.remove(&x) {
@@ -194,7 +189,7 @@ impl Graph {
                         .into_iter()
                         .for_each(|y| match self.vertices.get_mut(&y) {
                             Some(s) => {
-                                s.predecessor.remove_item(&x);
+                                remove_item(&mut s.predecessor, x);
                             }
                             None => (),
                         })

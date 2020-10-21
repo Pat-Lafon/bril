@@ -23,6 +23,7 @@ example:
 	#| dot -Tpdf -o filename.pdf
 
 TESTS := test/interp/*.bril \
+		 test/floats/*.bril \
 		 test/tdce/*.bril \
 		 test/lvn/*.bril \
 		 benchmarks/*.bril

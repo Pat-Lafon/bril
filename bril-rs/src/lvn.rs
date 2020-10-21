@@ -13,9 +13,41 @@ impl PartialEq for LvnValue {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (LvnValue::Const(i), LvnValue::Const(k)) => i == k,
-            (LvnValue::Op(val, args1), LvnValue::Op(val2, args2)) => {
-                val == val2 && args1.clone().sort() == args2.clone().sort()
+            // commutative operations
+            (
+                LvnValue::Op(
+                    val
+                    @
+                    (ValueOps::Add
+                    | ValueOps::Mul
+                    | ValueOps::And
+                    | ValueOps::Or
+                    | ValueOps::Eq),
+                    args1,
+                ),
+                LvnValue::Op(
+                    val2
+                    @
+                    (ValueOps::Add
+                    | ValueOps::Mul
+                    | ValueOps::And
+                    | ValueOps::Or
+                    | ValueOps::Eq),
+                    args2,
+                ),
+            ) if val == val2 => args1.clone().sort() == args2.clone().sort(),
+            // For operations that can be flipped and are equivalent
+            (LvnValue::Op(val, args1), LvnValue::Op(val2, args2))
+                if (val == &ValueOps::Lt && val2 == &ValueOps::Ge)
+                    || (val == &ValueOps::Gt && val2 == &ValueOps::Le)
+                    || (val == &ValueOps::Le && val2 == &ValueOps::Gt)
+                    || (val == &ValueOps::Ge && val2 == &ValueOps::Lt) =>
+            {
+                args1.clone() == args2.clone().into_iter().rev().collect::<Vec<u32>>()
             }
+            // Fall through, can only check if operations are exactly the same
+            (LvnValue::Op(val, args1), LvnValue::Op(val2, args2)) => val == val2 && args1 == args2,
+            // Are never equal, I am assuming you do constant folding first
             (LvnValue::Const(..), LvnValue::Op(..)) | (LvnValue::Op(..), LvnValue::Const(..)) => {
                 false
             }
@@ -95,6 +127,13 @@ fn convert_args(op: ValueOps, args: Vec<Literal>) -> Option<Literal> {
                 }
             }
         }
+        ValueOps::Fadd => {
+            if let Literal::Float(i) = args[0] {
+                if let Literal::Float(i2) = args[1] {
+                    return Some(Literal::Float(i + i2));
+                }
+            }
+        }
         ValueOps::Sub => {
             if let Literal::Int(i) = args[0] {
                 if let Literal::Int(i2) = args[1] {
@@ -102,10 +141,24 @@ fn convert_args(op: ValueOps, args: Vec<Literal>) -> Option<Literal> {
                 }
             }
         }
+        ValueOps::Fsub => {
+            if let Literal::Float(i) = args[0] {
+                if let Literal::Float(i2) = args[1] {
+                    return Some(Literal::Float(i - i2));
+                }
+            }
+        }
         ValueOps::Mul => {
             if let Literal::Int(i) = args[0] {
                 if let Literal::Int(i2) = args[1] {
                     return Some(Literal::Int(i * i2));
+                }
+            }
+        }
+        ValueOps::Fmul => {
+            if let Literal::Float(i) = args[0] {
+                if let Literal::Float(i2) = args[1] {
+                    return Some(Literal::Float(i * i2));
                 }
             }
         }
@@ -118,9 +171,25 @@ fn convert_args(op: ValueOps, args: Vec<Literal>) -> Option<Literal> {
                 }
             }
         }
+        ValueOps::Fdiv => {
+            if let Literal::Float(i) = args[0] {
+                if let Literal::Float(i2) = args[1] {
+                    if i2 != 0.0 {
+                        return Some(Literal::Float(i / i2));
+                    }
+                }
+            }
+        }
         ValueOps::Eq => {
             if let Literal::Int(i) = args[0] {
                 if let Literal::Int(i2) = args[1] {
+                    return Some(Literal::Bool(i == i2));
+                }
+            }
+        }
+        ValueOps::Feq => {
+            if let Literal::Float(i) = args[0] {
+                if let Literal::Float(i2) = args[1] {
                     return Some(Literal::Bool(i == i2));
                 }
             }
@@ -132,9 +201,23 @@ fn convert_args(op: ValueOps, args: Vec<Literal>) -> Option<Literal> {
                 }
             }
         }
+        ValueOps::Flt => {
+            if let Literal::Float(i) = args[0] {
+                if let Literal::Float(i2) = args[1] {
+                    return Some(Literal::Bool(i < i2));
+                }
+            }
+        }
         ValueOps::Gt => {
             if let Literal::Int(i) = args[0] {
                 if let Literal::Int(i2) = args[1] {
+                    return Some(Literal::Bool(i > i2));
+                }
+            }
+        }
+        ValueOps::Fgt => {
+            if let Literal::Float(i) = args[0] {
+                if let Literal::Float(i2) = args[1] {
                     return Some(Literal::Bool(i > i2));
                 }
             }
@@ -146,9 +229,23 @@ fn convert_args(op: ValueOps, args: Vec<Literal>) -> Option<Literal> {
                 }
             }
         }
+        ValueOps::Fle => {
+            if let Literal::Float(i) = args[0] {
+                if let Literal::Float(i2) = args[1] {
+                    return Some(Literal::Bool(i <= i2));
+                }
+            }
+        }
         ValueOps::Ge => {
             if let Literal::Int(i) = args[0] {
                 if let Literal::Int(i2) = args[1] {
+                    return Some(Literal::Bool(i >= i2));
+                }
+            }
+        }
+        ValueOps::Fge => {
+            if let Literal::Float(i) = args[0] {
+                if let Literal::Float(i2) = args[1] {
                     return Some(Literal::Bool(i >= i2));
                 }
             }

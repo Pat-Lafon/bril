@@ -6,7 +6,6 @@ fn main() {
     let args = App::new("bril-rs")
         .author("Patrick LaFontaine")
         .about("Does things with bril programs.")
-        //.arg(Arg::with_name("json").index(1).required(true))
         .arg(Arg::with_name("dce").long("dce").takes_value(false))
         .arg(Arg::with_name("lvn").long("lvn").takes_value(false))
         .arg(
@@ -26,7 +25,6 @@ fn main() {
 
        return;
     */
-    //graphs.do_dominator_tree();
 
     //graphs.to_ssa();
 

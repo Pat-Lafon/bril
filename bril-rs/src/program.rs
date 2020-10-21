@@ -90,7 +90,7 @@ impl Instruction {
                 op,
                 dest,
                 op_type,
-                args,
+                args:_,
                 funcs,
                 labels,
             } => {
@@ -105,7 +105,7 @@ impl Instruction {
             }
             Instruction::Effect {
                 op,
-                args,
+                args:_,
                 funcs,
                 labels,
             } => {
@@ -138,7 +138,7 @@ impl Instruction {
         match self.clone() {
             Instruction::Constant {
                 op,
-                dest,
+                dest:_,
                 const_type,
                 value,
             } => {
@@ -151,7 +151,7 @@ impl Instruction {
             }
             Instruction::Value {
                 op,
-                dest,
+                dest:_,
                 op_type,
                 args,
                 funcs,
@@ -330,6 +330,24 @@ pub enum ValueOps {
     Id,
     #[serde(rename = "phi")]
     Phi,
+    #[serde(rename = "fadd")]
+    Fadd,
+    #[serde(rename = "fsub")]
+    Fsub,
+    #[serde(rename = "fmul")]
+    Fmul,
+    #[serde(rename = "fdiv")]
+    Fdiv,
+    #[serde(rename = "feq")]
+    Feq,
+    #[serde(rename = "flt")]
+    Flt,
+    #[serde(rename = "fgt")]
+    Fgt,
+    #[serde(rename = "fle")]
+    Fle,
+    #[serde(rename = "fge")]
+    Fge,
     /*     #[serde(rename = "alloc")]
     Alloc,
     #[serde(rename = "ptradd")]
@@ -342,6 +360,8 @@ pub enum Type {
     Int,
     #[serde(rename = "bool")]
     Bool,
+    #[serde(rename = "float")]
+    Float,
     #[serde(rename = "ptr")]
     // Todo this doesn't work yet
     Pointer(PrimitiveType),
@@ -359,13 +379,16 @@ pub enum PrimitiveType {
     Int,
     #[serde(rename = "bool")]
     Bool,
+    #[serde(rename = "float")]
+    Float,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 pub enum Literal {
-    Int(i32),
+    Int(i64),
     Bool(bool),
+    Float(f64)
 }
 
 pub fn load_program() -> Program {
