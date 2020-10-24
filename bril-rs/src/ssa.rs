@@ -16,12 +16,10 @@ fn meet(vec_of_sets: Vec<HashSet<u32>>) -> HashSet<u32> {
     match vec_of_sets.into_iter().fold_first(|a, b| {
         if a.is_empty() {
             b
+        } else if b.is_empty() {
+            a
         } else {
-            if b.is_empty() {
-                a
-            } else {
-                a.intersection(&b).copied().collect()
-            }
+            a.intersection(&b).copied().collect()
         }
     }) {
         Some(s) => s,

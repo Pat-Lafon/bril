@@ -26,7 +26,11 @@ fn main() {
        return;
     */
 
-    //graphs.to_ssa();
+    graphs.to_ssa();
+
+    io::stdout()
+        .write_all(graphs.function_graphs[0].graph.to_dot().as_bytes())
+        .unwrap();
 
     if args.is_present("lvn") {
         graphs.do_lvn();
@@ -36,18 +40,18 @@ fn main() {
         graphs.do_dce();
     }
 
-    //graphs.from_ssa();
+    graphs.from_ssa();
 
-    /* if args.is_present("fix_names") {
+    if args.is_present("fix_names") {
         graphs.fix_variable_names();
-    } */
+    }
 
     /* io::stdout()
                             .write_all(graphs.function_graphs[0].graph.to_dot().as_bytes())
     .unwrap(); */
     let result_program = graphs.to_program();
 
-    io::stdout()
+    /* io::stdout()
         .write_all(serde_json::to_string(&result_program).unwrap().as_bytes())
-        .unwrap();
+        .unwrap(); */
 }

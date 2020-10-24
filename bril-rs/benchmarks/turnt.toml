@@ -1,2 +1,2 @@
-command = "bril2json < {filename} | cargo +nightly run -q  -- --fix_names | brili {args}"
+command = "bril2json < {filename} | cargo +nightly run -q  -- --dce --fix_names | brili {args}"
 output.out = "-"

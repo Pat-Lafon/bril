@@ -263,7 +263,7 @@ pub enum ConstOps {
 }
 
 // Todo Can I handle ops in a better way because call overlaps?
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum EffectOps {
     #[serde(rename = "jmp")]
     Jump,
@@ -354,7 +354,7 @@ pub enum ValueOps {
     PointerAdd, */
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum Type {
     #[serde(rename = "int")]
     Int,
@@ -367,12 +367,12 @@ pub enum Type {
     Pointer(PrimitiveType),
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct PointerType {
     ptr: PrimitiveType,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 pub enum PrimitiveType {
     #[serde(rename = "int")]

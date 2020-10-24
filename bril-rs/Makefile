@@ -2,6 +2,10 @@
 build:
 	cargo +nightly build
 
+.PHONY: release
+release:
+	cargo +nightly release
+
 .PHONY: run
 run:
 	cargo +nightly run
@@ -18,7 +22,7 @@ check:
 example:
 	#bril2json < ../test/interp/jmp.bril | cargo +nightly run -q | dot -Tpdf -o cfg.pdf
 	# bril2json < test/interp/alloc.bril | cargo +nightly run -q
-	bril2json < benchmarks/collatz.bril | cargo +nightly run -q -- --fix_names | bril2txt
+	bril2json < benchmarks/check-primes.bril | cargo +nightly run -q -- --fix_names | dot -Tpdf -o cfg.pdf
 
 	#| dot -Tpdf -o filename.pdf
 

@@ -1,5 +1,5 @@
 use crate::cfg::{BasicBlock, Cfg, Graph};
-use crate::program::{ConstOps, Instruction, Literal, ValueOps};
+use crate::program::{ConstOps, EffectOps, Instruction, Literal, ValueOps};
 
 use std::collections::HashMap;
 
@@ -82,12 +82,14 @@ fn find_value(val: &LvnValue, table: &Vec<(LvnValue, String)>) -> Option<(LvnVal
         .map(|(y, z)| ((*y).clone(), z.clone()))
 }
 
+// Tries to see if all variables are actually const values
 fn const_args(
     args: Vec<String>,
     var2num: &HashMap<String, u32>,
     table: &Vec<(LvnValue, String)>,
 ) -> Option<Vec<Literal>> {
     let mut result = Vec::new();
+
     for i in args.into_iter() {
         if let (LvnValue::Const(l), _) = &table[*var2num.get(&i).unwrap() as usize] {
             result.push(l.clone())
@@ -98,15 +100,21 @@ fn const_args(
     Some(result)
 }
 
+// Tries to update a variable with a variable that holds the same value
 fn update_args(
     args: Vec<String>,
-    var2num: &HashMap<String, u32>,
-    table: &Vec<(LvnValue, String)>,
+    var2num: &mut HashMap<String, u32>,
+    table: &mut Vec<(LvnValue, String)>,
 ) -> Option<Vec<String>> {
     let mut should_update = false;
     let mut result = Vec::new();
     for i in args.into_iter() {
-        let (_, v) = &table[*var2num.get(&i).unwrap() as usize];
+        let v = match var2num.get(&i) {
+            Some(num) => {let (_, v) = &table[*num as usize]; v.to_string()}
+            // todo this is ugly because we only operate on blocks not globally
+            None => {var2num.insert(i.clone(), table.len() as u32); table.push((LvnValue::Op(ValueOps::Id, vec![table.len() as u32]), i.clone())); i.clone()}
+        };
+
         result.push(v.to_string());
         should_update = should_update || i != v.to_string();
     }
@@ -117,7 +125,7 @@ fn update_args(
     }
 }
 
-// I really want the let chains here in guard statements
+// Attempts constant folding
 fn convert_args(op: ValueOps, args: Vec<Literal>) -> Option<Literal> {
     match op {
         ValueOps::Add => {
@@ -281,8 +289,8 @@ fn convert_args(op: ValueOps, args: Vec<Literal>) -> Option<Literal> {
 
 fn update_instruction(
     instr: &Instruction,
-    var2num: &HashMap<String, u32>,
-    table: &Vec<(LvnValue, String)>,
+    var2num: &mut HashMap<String, u32>,
+    table: &mut Vec<(LvnValue, String)>,
 ) -> Option<Instruction> {
     match instr {
         Instruction::Constant { .. } => None,
@@ -294,12 +302,38 @@ fn update_instruction(
             labels,
         } => {
             if let Some(new_args) = update_args(args.clone(), var2num, table) {
-                Some(Instruction::Effect {
-                    op: op.clone(),
-                    args: Some(new_args),
-                    funcs: funcs.clone(),
-                    labels: labels.clone(),
-                })
+                if let (LvnValue::Const(Literal::Bool(b)), true) = (
+                    table
+                        .get((*var2num.get(&new_args[0]).unwrap()) as usize)
+                        .unwrap()
+                        .clone()
+                        .0,
+                    op == &EffectOps::Branch,
+                ) {
+                    if b {
+                        Some(Instruction::Effect {
+                            op: EffectOps::Jump,
+                            args: None,
+                            funcs: None,
+                            //todo wtf is this, is there a nicer way to do this?
+                            labels: Some(vec![labels.as_ref().unwrap().clone()[0].clone()]),
+                        })
+                    } else {
+                        Some(Instruction::Effect {
+                            op: EffectOps::Jump,
+                            args: None,
+                            funcs: None,
+                            labels: Some(vec![labels.as_ref().unwrap().clone()[1].clone()]),
+                        })
+                    }
+                } else {
+                    Some(Instruction::Effect {
+                        op: op.clone(),
+                        args: Some(new_args),
+                        funcs: funcs.clone(),
+                        labels: labels.clone(),
+                    })
+                }
             } else {
                 None
             }
@@ -381,7 +415,6 @@ fn lvn_basic_block(block: &mut BasicBlock) {
     if block.code.len() == 0 {
         return;
     }
-    let mut index_num = 0;
     // Variable name to index
     let mut var2num: HashMap<String, u32> = HashMap::new();
     // Canonical value to destination variable
@@ -389,7 +422,7 @@ fn lvn_basic_block(block: &mut BasicBlock) {
     let mut table: Vec<(LvnValue, String)> = Vec::new();
     for instr_num in 0..(block.code.len() - 1) {
         let mut i = block.code[instr_num].clone();
-        if let Some(new_i) = update_instruction(&i, &var2num, &table) {
+        if let Some(new_i) = update_instruction(&i, &mut var2num, &mut table) {
             block.code[instr_num] = new_i.clone();
             i = new_i
         }
@@ -407,10 +440,9 @@ fn lvn_basic_block(block: &mut BasicBlock) {
                     }
                 }
                 None => {
-                    var2num.insert(i.get_dest().unwrap(), index_num);
+                    var2num.insert(i.get_dest().unwrap(), table.len() as u32);
                     clear_dest(&i.get_dest().unwrap(), &mut table);
-                    table.insert(index_num as usize, (v, i.get_dest().unwrap()));
-                    index_num += 1;
+                    table.push((v, i.get_dest().unwrap()));
                 }
             },
             Some(v @ LvnValue::Const(_)) => match find_value(&v, &table) {
@@ -418,10 +450,9 @@ fn lvn_basic_block(block: &mut BasicBlock) {
                     var2num.insert(i.get_dest().unwrap(), *var2num.get(&s).unwrap());
                 }
                 None => {
-                    var2num.insert(i.get_dest().unwrap(), index_num);
+                    var2num.insert(i.get_dest().unwrap(), table.len() as u32);
                     clear_dest(&i.get_dest().unwrap(), &mut table);
-                    table.insert(index_num as usize, (v, i.get_dest().unwrap()));
-                    index_num += 1;
+                    table.push((v, i.get_dest().unwrap()));
                 }
             },
             // Could do a replacement here for effect instructions
@@ -433,7 +464,7 @@ fn lvn_basic_block(block: &mut BasicBlock) {
                     labels,
                 } = i
                 {
-                    match update_args(args.clone(), &var2num, &table) {
+                    match update_args(args.clone(), &mut var2num, &mut table) {
                         Some(new_args) => {
                             block.code[instr_num] = Instruction::Effect {
                                 op: op.clone(),
