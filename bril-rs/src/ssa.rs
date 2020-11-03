@@ -1,4 +1,5 @@
 use crate::cfg::{BasicBlock, Cfg, Graph};
+use crate::helper::write_graph_to_file;
 use crate::program::{Argument, Instruction, Type, ValueOps};
 use crate::worklist::Constraints;
 use cached::proc_macro::cached;
@@ -15,9 +16,9 @@ fn transfer(mut in_constraint: HashSet<u32>, block: &BasicBlock) -> HashSet<u32>
 fn meet(vec_of_sets: Vec<HashSet<u32>>) -> HashSet<u32> {
     match vec_of_sets.into_iter().fold_first(|a, b| {
         if a.is_empty() {
-            b
-        } else if b.is_empty() {
             a
+        } else if b.is_empty() {
+            b
         } else {
             a.intersection(&b).copied().collect()
         }
@@ -28,7 +29,17 @@ fn meet(vec_of_sets: Vec<HashSet<u32>>) -> HashSet<u32> {
 }
 
 fn dominators(graph: &mut Graph) -> Constraints<HashSet<u32>> {
-    graph.worklist_algo(|_| HashSet::new(), transfer, meet, true)
+    let all_nodes: Vec<u32> = graph.vertices.keys().copied().collect();
+    let init = |b: &BasicBlock| {
+        if b.index == graph.starting_vertex {
+            vec![graph.starting_vertex]
+                .into_iter()
+                .collect::<HashSet<u32>>()
+        } else {
+            all_nodes.clone().into_iter().collect::<HashSet<u32>>()
+        }
+    };
+    graph.worklist_algo(&init, &transfer, &meet, true)
 }
 
 fn dominator_tree(graph: &mut Graph) -> HashMap<u32, Vec<u32>> {
@@ -38,6 +49,9 @@ fn dominator_tree(graph: &mut Graph) -> HashMap<u32, Vec<u32>> {
         .keys()
         .for_each(|x| idom.insert(*x, Vec::new()).unwrap_none());
     let constraints = dominators(graph).in_constraints;
+
+    /* println!("{:?}", graph);
+    println!("{:?}", constraints); */
 
     for (idx, doms) in &constraints {
         // we need to check that there are actually dominators
@@ -96,14 +110,12 @@ fn dominance_frontier(
         .for_each(|x| frontier.insert(*x, HashSet::new()).unwrap_none());
 
     // https://en.wikipedia.org/wiki/Static_single_assignment_form#Converting_to_SSA
-    for (idx, immediate_dom) in idom.clone() {
+    for (idx, immediate_dom) in idom.iter() {
         if graph.vertices.get(&idx).unwrap().predecessor.len() >= 2 {
             for p in graph.vertices.get(&idx).unwrap().predecessor.iter() {
                 let mut runner = p;
-                while runner != &immediate_dom {
-                    frontier.entry(*runner).and_modify(|e| {
-                        e.insert(idx);
-                    });
+                while runner != immediate_dom {
+                    frontier.get_mut(&runner).unwrap().insert(*idx);
                     runner = idom.get(runner).unwrap();
                 }
             }
@@ -127,11 +139,14 @@ fn idf(dom_front: &HashMap<u32, HashSet<u32>>, node: u32) -> HashSet<u32> {
     let mut res = dom_front.get(&node).unwrap().clone();
     let mut worklist: Vec<u32> = res.clone().into_iter().collect();
     while let Some(s) = worklist.pop() {
-        let temp = idf(dom_front, s);
-        for i in temp.into_iter() {
-            // if res did not contain i before
-            if res.insert(i) {
-                worklist.push(i);
+        // I think I need this if condition to not overflow
+        if s != node {
+            let temp = idf(dom_front, s);
+            for i in temp.into_iter() {
+                // if res did not contain i before
+                if res.insert(i) {
+                    worklist.push(i);
+                }
             }
         }
     }
@@ -144,9 +159,11 @@ fn do_var_rename(
     dom_tree: &HashMap<u32, Vec<u32>>,
     current_node: u32,
     variable_count: &mut u32,
+    done_blocks: &mut HashSet<u32>,
 ) {
     // updated_definitions
     let mut new_defs = Vec::new();
+    dbg!(&current_node);
     // operate on current_node
     graph
         .vertices
@@ -157,6 +174,7 @@ fn do_var_rename(
         .for_each(|i| {
             if i.not_phi() {
                 if let Some(Some(args)) = i.get_args() {
+                    dbg!(&args);
                     i.set_args(Some(
                         args.into_iter()
                             .map(|x| reaching_defs.get(&x).unwrap().last().unwrap().to_string())
@@ -172,6 +190,8 @@ fn do_var_rename(
                 new_defs.push(dest);
             }
         });
+
+    dbg!(&reaching_defs);
 
     let succs = graph
         .vertices
@@ -204,6 +224,7 @@ fn do_var_rename(
                     labels: Some(labels),
                 } => {
                     let idx = labels.iter().position(|l| l == &current_label).unwrap();
+                    dbg!(&args);
                     args[idx] = reaching_defs
                         .get(&args[idx])
                         .unwrap()
@@ -223,13 +244,30 @@ fn do_var_rename(
             })
     });
 
+    /* println!("{:?}", dom_tree);
+    println!("{:?}", current_node); */
+
     // Call on children of node
     dom_tree
         .get(&current_node)
         .unwrap()
         .clone()
         .into_iter()
-        .for_each(|x| do_var_rename(graph, reaching_defs, dom_tree, x, variable_count));
+        .for_each(|x| {
+            if !done_blocks.contains(&x) {
+                done_blocks.insert(x);
+                do_var_rename(
+                    graph,
+                    reaching_defs,
+                    dom_tree,
+                    x,
+                    variable_count,
+                    done_blocks,
+                )
+            } else {
+                panic!("IDK, I just need to think if the dom tree repeats itself, this would be true for dominance frontier which may be what I was thinking")
+            }
+        });
 
     // do any finishing stuff
     new_defs.into_iter().for_each(|x| {
@@ -258,6 +296,48 @@ foreach BB: basic Block in depth-first search preorder traversal of the dom. tre
             replace this use of v by v.reachingDef in phi
 */
 
+// TODO I am computing reaching def's twice on the dom tree so this can probably be factored out
+fn variable_collection(
+    graph: &mut Graph,
+    // iterating through the dom tree
+    dom_tree: &HashMap<u32, Vec<u32>>,
+    reaching_defs : &mut HashMap<String, Vec<String>>,
+    phi_defs: &mut HashMap<String, Vec<String>>,
+    // collecting all definitions found
+    all_defs: &mut HashSet<String>,
+    current_node: u32,
+) {
+    // prelude
+    let mut new_defs = Vec::new();
+
+    let block = graph.vertices.get(&current_node).unwrap();
+
+    let defs: HashSet<String> = block
+        .code
+        .clone()
+        .into_iter()
+        .filter_map(|i| i.get_dest())
+        .collect();
+    all_vars = all_vars.union(&defs).map(|x| x.to_string()).collect();
+    for i in idf(&dom_front, block.index) {
+        let phi_defs = need_phi.entry(i).or_insert(HashSet::new());
+        *phi_defs = phi_defs.union(&reaching_defs).map(|x| x.to_string()).collect();
+    }
+
+    // iterate down the tree
+    dom_tree
+        .get(&current_node)
+        .unwrap()
+        .clone()
+        .into_iter()
+        .for_each(|x| variable_collection(graph, dom_tree, phi_defs, all_defs, current_node));
+
+    // cleanup
+    new_defs.into_iter().for_each(|x| {
+        reaching_defs.get_mut(&x).unwrap().pop().unwrap();
+    });
+}
+
 fn do_ssa(graph: &mut Graph, args: Vec<Argument>) {
     let dom_tree = dominator_tree(graph);
     let dom_front = dominance_frontier(graph, &dom_tree);
@@ -265,7 +345,11 @@ fn do_ssa(graph: &mut Graph, args: Vec<Argument>) {
     let mut need_phi: HashMap<u32, HashSet<String>> = HashMap::new();
     let mut all_vars = HashSet::new();
     // Get all blocks, for all blocks get all instructions and filter_map to dest, convert to set, union set with the set of each idf for that node
+
+    dbg!(&dom_front);
+
     for block in graph.vertices.values() {
+        //println!("{:?}", block);
         let reaching_defs: HashSet<String> = block
             .code
             .clone()
@@ -290,6 +374,8 @@ fn do_ssa(graph: &mut Graph, args: Vec<Argument>) {
         .iter()
         .map(|(i, b)| (*i, b.label.to_string()))
         .collect();
+
+    dbg!(&need_phi);
 
     // For each node, add the phi instructions to the beginning
     for (idx, phi_defs) in need_phi {
@@ -317,6 +403,8 @@ fn do_ssa(graph: &mut Graph, args: Vec<Argument>) {
         }
     }
 
+    write_graph_to_file(&graph, "graph/cfg_debug.pdf");
+
     // I am passing renaming off onto a function to do a recursive depth-first search on the dom-tree
 
     let mut reaching_defs = HashMap::new();
@@ -325,19 +413,23 @@ fn do_ssa(graph: &mut Graph, args: Vec<Argument>) {
             .insert(x.to_string(), Vec::new())
             .unwrap_none()
     });
-    let starting_node = graph.starting_vertex;
-    // Args passed into a function are already defined and I'm not going to bother renaming them
+    // Add args as we won't see them defined in the code
     args.into_iter().for_each(|x| {
         reaching_defs.insert(x.name.clone(), vec![x.name]);
     });
+    let starting_node = graph.starting_vertex;
+
+    dbg!(&reaching_defs);
 
     let mut variable_count = 1;
+    /* println!("{:?}", graph); */
     do_var_rename(
         graph,
         &mut reaching_defs,
         &dom_tree,
         starting_node,
         &mut variable_count,
+        &mut vec![starting_node].into_iter().collect(),
     )
 }
 

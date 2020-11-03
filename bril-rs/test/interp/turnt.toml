@@ -1,1 +1,1 @@
-command = "bril2json < {filename} | cargo +nightly run -q | brili {args}"
+command = "bril2json < {filename} | cargo +nightly run -q -- --dce | brili {args}"

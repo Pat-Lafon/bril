@@ -21,9 +21,9 @@ impl Program {
                 .into_iter()
                 .map(|x| FunctionGraph {
                     name: x.name.clone(),
-                    args: x.args,
+                    args: x.args.clone(),
                     return_type: x.return_type,
-                    graph: create_graph(x.instrs, x.name).do_prune(),
+                    graph: create_graph(x.instrs, x.name, x.args.unwrap_or_else(||Vec::new())).do_prune(),
                 })
                 .collect(),
         }
@@ -59,6 +59,7 @@ pub struct FunctionGraph {
 pub struct Graph {
     pub name: String,
     pub starting_vertex: u32,
+    pub arguments: Vec<String>,
     pub vertices: HashMap<u32, BasicBlock>,
     pub label_map: HashMap<String, u32>, // I'm not sure if I need this but I'll hold on to it for ease of use
 }
@@ -481,7 +482,7 @@ fn add_back_edges(graph: &mut HashMap<u32, BasicBlock>) {
     }
 }
 
-fn create_graph(code: Vec<Code>, name: String) -> Graph {
+fn create_graph(code: Vec<Code>, name: String, args: Vec<Argument>) -> Graph {
     let mut vertices: HashMap<u32, BasicBlock> = HashMap::new();
 
     let (blocks_n_parts, label_map, mut index_acc) = make_blocks(code);
@@ -540,6 +541,7 @@ fn create_graph(code: Vec<Code>, name: String) -> Graph {
     Graph {
         name,
         starting_vertex: starting_vertex.unwrap(),
+        arguments: args.into_iter().map(|a| a.name).collect(),
         vertices,
         label_map,
     }

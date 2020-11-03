@@ -1,0 +1,191 @@
+Graph { name: "main", starting_vertex: 9, vertices: {
+        4: BasicBlock { label: "program.end", index: 4, code: [Effect { op: Print, args: Some([
+                        "v1"
+                    ]), funcs: None, labels: None
+                }, Effect { op: Jump, args: None, funcs: None, labels: Some([
+                        "%%%%%THIS_IS_THE_END%%%%%"
+                    ])
+                }
+            ], predecessor: [
+                3
+            ], successor: Jump(8)
+        },
+        8: BasicBlock { label: "%%%%%THIS_IS_THE_END%%%%%", index: 8, code: [], predecessor: [
+                4
+            ], successor: End
+        },
+        6: BasicBlock { label: "if.2", index: 6, code: [Value { op: Id, dest: "v1", op_type: Int, args: Some([
+                        "v3"
+                    ]), funcs: None, labels: None
+                }, Effect { op: Jump, args: None, funcs: None, labels: Some([
+                        "cmp.val"
+                    ])
+                }
+            ], predecessor: [
+                5
+            ], successor: Jump(0)
+        },
+        1: BasicBlock { label: "if.1", index: 1, code: [Value { op: Sub, dest: "v3", op_type: Int, args: Some([
+                        "v1",
+                        "v0"
+                    ]), funcs: None, labels: None
+                }, Effect { op: Jump, args: None, funcs: None, labels: Some([
+                        "loop.bound"
+                    ])
+                }
+            ], predecessor: [
+                0
+            ], successor: Jump(3)
+        },
+        0: BasicBlock { label: "cmp.val", index: 0, code: [Value { op: Lt, dest: "v2", op_type: Bool, args: Some([
+                        "v0",
+                        "v1"
+                    ]), funcs: None, labels: None
+                }, Effect { op: Branch, args: Some([
+                        "v2"
+                    ]), funcs: None, labels: Some([
+                        "if.1",
+                        "else.1"
+                    ])
+                }
+            ], predecessor: [
+                6,
+                9,
+                7
+            ], successor: Conditional { true_branch: 1, false_branch: 2
+            }
+        },
+        2: BasicBlock { label: "else.1", index: 2, code: [Value { op: Sub, dest: "v3", op_type: Int, args: Some([
+                        "v0",
+                        "v1"
+                    ]), funcs: None, labels: None
+                }, Effect { op: Jump, args: None, funcs: None, labels: Some([
+                        "loop.bound"
+                    ])
+                }
+            ], predecessor: [
+                0
+            ], successor: Jump(3)
+        },
+        9: BasicBlock { label: "entry", index: 9, code: [Constant { op: Const, dest: "vc0", const_type: Int, value: Int(0)
+                }, Value { op: Id, dest: "v0", op_type: Int, args: Some([
+                        "op1"
+                    ]), funcs: None, labels: None
+                }, Value { op: Id, dest: "v1", op_type: Int, args: Some([
+                        "op2"
+                    ]), funcs: None, labels: None
+                }, Effect { op: Jump, args: None, funcs: None, labels: Some([
+                        "cmp.val"
+                    ])
+                }
+            ], predecessor: [], successor: Jump(0)
+        },
+        5: BasicBlock { label: "update.val", index: 5, code: [Effect { op: Branch, args: Some([
+                        "v2"
+                    ]), funcs: None, labels: Some([
+                        "if.2",
+                        "else.2"
+                    ])
+                }
+            ], predecessor: [
+                3
+            ], successor: Conditional { true_branch: 6, false_branch: 7
+            }
+        },
+        7: BasicBlock { label: "else.2", index: 7, code: [Value { op: Id, dest: "v0", op_type: Int, args: Some([
+                        "v3"
+                    ]), funcs: None, labels: None
+                }, Effect { op: Jump, args: None, funcs: None, labels: Some([
+                        "cmp.val"
+                    ])
+                }
+            ], predecessor: [
+                5
+            ], successor: Jump(0)
+        },
+        3: BasicBlock { label: "loop.bound", index: 3, code: [Value { op: Eq, dest: "v4", op_type: Bool, args: Some([
+                        "v3",
+                        "vc0"
+                    ]), funcs: None, labels: None
+                }, Effect { op: Branch, args: Some([
+                        "v4"
+                    ]), funcs: None, labels: Some([
+                        "program.end",
+                        "update.val"
+                    ])
+                }
+            ], predecessor: [
+                1,
+                2
+            ], successor: Conditional { true_branch: 4, false_branch: 5
+            }
+        }
+    }, label_map: {
+        "if.1": 1,
+        "cmp.val": 0,
+        "else.1": 2,
+        "update.val": 5,
+        "loop.bound": 3,
+        "else.2": 7,
+        "%%%%%THIS_IS_THE_END%%%%%": 8,
+        "if.2": 6,
+        "program.end": 4
+    }
+}
+{
+    6: {
+        5,
+        9,
+        6,
+        3,
+        0
+    },
+    2: {
+        2,
+        9,
+        0
+    },
+    5: {
+        5,
+        9,
+        3,
+        0
+    },
+    4: {
+        9,
+        4,
+        3,
+        0
+    },
+    0: {
+        9,
+        0
+    },
+    1: {
+        1,
+        9,
+        0
+    },
+    9: {
+        9
+    },
+    8: {
+        8,
+        9,
+        4,
+        3,
+        0
+    },
+    7: {
+        5,
+        9,
+        3,
+        0,
+        7
+    },
+    3: {
+        3,
+        9,
+        0
+    }
+}

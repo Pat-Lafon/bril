@@ -5,6 +5,7 @@
 #![feature(drain_filter)]
 pub mod cfg;
 pub mod dce;
+pub mod helper;
 pub mod lvn;
 pub mod program;
 pub mod ssa;
