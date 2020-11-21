@@ -90,7 +90,7 @@ impl Instruction {
                 op,
                 dest,
                 op_type,
-                args:_,
+                args: _,
                 funcs,
                 labels,
             } => {
@@ -105,7 +105,7 @@ impl Instruction {
             }
             Instruction::Effect {
                 op,
-                args:_,
+                args: _,
                 funcs,
                 labels,
             } => {
@@ -138,7 +138,7 @@ impl Instruction {
         match self.clone() {
             Instruction::Constant {
                 op,
-                dest:_,
+                dest: _,
                 const_type,
                 value,
             } => {
@@ -151,7 +151,7 @@ impl Instruction {
             }
             Instruction::Value {
                 op,
-                dest:_,
+                dest: _,
                 op_type,
                 args,
                 funcs,
@@ -299,68 +299,42 @@ impl fmt::Display for EffectOps {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "lowercase")]
 pub enum ValueOps {
-    #[serde(rename = "add")]
     Add,
-    #[serde(rename = "sub")]
     Sub,
-    #[serde(rename = "mul")]
     Mul,
-    #[serde(rename = "div")]
     Div,
-    #[serde(rename = "eq")]
     Eq,
-    #[serde(rename = "lt")]
     Lt,
-    #[serde(rename = "gt")]
     Gt,
-    #[serde(rename = "le")]
     Le,
-    #[serde(rename = "ge")]
     Ge,
-    #[serde(rename = "not")]
     Not,
-    #[serde(rename = "and")]
     And,
-    #[serde(rename = "or")]
     Or,
-    #[serde(rename = "call")]
     Call,
-    #[serde(rename = "id")]
     Id,
-    #[serde(rename = "phi")]
     Phi,
-    #[serde(rename = "fadd")]
     Fadd,
-    #[serde(rename = "fsub")]
     Fsub,
-    #[serde(rename = "fmul")]
     Fmul,
-    #[serde(rename = "fdiv")]
     Fdiv,
-    #[serde(rename = "feq")]
     Feq,
-    #[serde(rename = "flt")]
     Flt,
-    #[serde(rename = "fgt")]
     Fgt,
-    #[serde(rename = "fle")]
     Fle,
-    #[serde(rename = "fge")]
     Fge,
-    /*     #[serde(rename = "alloc")]
     Alloc,
-    #[serde(rename = "ptradd")]
-    PointerAdd, */
+    Load,
+    PtrAdd,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "lowercase")]
 pub enum Type {
-    #[serde(rename = "int")]
     Int,
-    #[serde(rename = "bool")]
     Bool,
-    #[serde(rename = "float")]
     Float,
     #[serde(rename = "ptr")]
     // Todo this doesn't work yet
@@ -373,13 +347,9 @@ pub struct PointerType {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[serde(untagged)]
 pub enum PrimitiveType {
-    #[serde(rename = "int")]
     Int,
-    #[serde(rename = "bool")]
     Bool,
-    #[serde(rename = "float")]
     Float,
 }
 
@@ -388,7 +358,7 @@ pub enum PrimitiveType {
 pub enum Literal {
     Int(i64),
     Bool(bool),
-    Float(f64)
+    Float(f64),
 }
 
 pub fn load_program() -> Program {

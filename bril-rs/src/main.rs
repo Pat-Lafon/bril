@@ -28,10 +28,10 @@ fn main() {
 
     graphs.to_ssa();
 
-    io::stdout()
-        .write_all(graphs.function_graphs[0].graph.to_dot().as_bytes())
-        .unwrap();
-
+    /* io::stdout()
+           .write_all(graphs.function_graphs[0].graph.to_dot().as_bytes())
+           .unwrap();
+    */
     if args.is_present("lvn") {
         graphs.do_lvn();
     }
@@ -51,7 +51,7 @@ fn main() {
     .unwrap(); */
     let result_program = graphs.to_program();
 
-    /* io::stdout()
+    io::stdout()
         .write_all(serde_json::to_string(&result_program).unwrap().as_bytes())
-        .unwrap(); */
+        .unwrap();
 }

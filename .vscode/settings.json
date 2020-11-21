@@ -4,10 +4,8 @@
     "instrs"
   ],
   "files.exclude": {
-    "bril-ts": true,
     "bril-txt": true,
     "bril-vim": true,
-    "brilirs": true,
     "docs": true,
     "examples": true,
     "src": true,

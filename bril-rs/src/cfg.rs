@@ -81,7 +81,11 @@ impl Graph {
             .keys()
             .map(|x| {
                 let ends = self.vertices.get(x).unwrap();
-                ends.successor.to_vec().into_iter().map(|i| format!("\t{} -> {};\n", x, i)).collect::<String>()
+                ends.successor
+                    .to_vec()
+                    .into_iter()
+                    .map(|i| format!("\t{} -> {};\n", x, i))
+                    .collect::<String>()
             })
             .collect::<String>();
         format!("digraph {} {{\n{}{}}}", self.name, nodes, edges)
@@ -121,10 +125,10 @@ impl Graph {
                         Instruction::Value {
                             op: ValueOps::Id,
                             dest,
-                            op_type:_,
+                            op_type: _,
                             args: Some(arg),
-                            funcs:_,
-                            labels:_,
+                            funcs: _,
+                            labels: _,
                         } if dest == arg[0] && arg.len() == 1 => None,
                         _ => Some(Code::Instruction(x)),
                     })
@@ -155,7 +159,9 @@ impl Graph {
         }
         match code.last() {
             // Take off a dead label at the end for cleanliness
-            Some(Code::Label { label:_ }) => {code.pop();},
+            Some(Code::Label { label: _ }) => {
+                code.pop();
+            }
             _ => (),
         }
         code
@@ -164,7 +170,9 @@ impl Graph {
     // I'm basically going to start at the starting block and find all the blocks I can reach from there. Then delete all the blocks that get missed
     pub fn do_prune(mut self) -> Self {
         let mut verts: Vec<u32> = self.vertices.keys().copied().collect();
-        let remove_item = |vec : &mut Vec<u32>, item: u32| vec.iter().position(|x| *x == item).map(|i| vec.remove(i));
+        let remove_item = |vec: &mut Vec<u32>, item: u32| {
+            vec.iter().position(|x| *x == item).map(|i| vec.remove(i))
+        };
         let mut worklist = vec![remove_item(&mut verts, self.starting_vertex).unwrap()];
         while let Some(idx) = worklist.pop() {
             self.vertices

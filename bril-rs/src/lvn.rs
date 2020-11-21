@@ -110,9 +110,19 @@ fn update_args(
     let mut result = Vec::new();
     for i in args.into_iter() {
         let v = match var2num.get(&i) {
-            Some(num) => {let (_, v) = &table[*num as usize]; v.to_string()}
+            Some(num) => {
+                let (_, v) = &table[*num as usize];
+                v.to_string()
+            }
             // todo this is ugly because we only operate on blocks not globally
-            None => {var2num.insert(i.clone(), table.len() as u32); table.push((LvnValue::Op(ValueOps::Id, vec![table.len() as u32]), i.clone())); i.clone()}
+            None => {
+                var2num.insert(i.clone(), table.len() as u32);
+                table.push((
+                    LvnValue::Op(ValueOps::Id, vec![table.len() as u32]),
+                    i.clone(),
+                ));
+                i.clone()
+            }
         };
 
         result.push(v.to_string());
@@ -282,7 +292,9 @@ fn convert_args(op: ValueOps, args: Vec<Literal>) -> Option<Literal> {
                 return Some(args[0].clone());
             }
         }
-        ValueOps::Call | ValueOps::Phi => return None,
+        ValueOps::Call | ValueOps::Phi | ValueOps::Alloc | ValueOps::PtrAdd | ValueOps::Load => {
+            return None
+        }
     }
     None
 }
