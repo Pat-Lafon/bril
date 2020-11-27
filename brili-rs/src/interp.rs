@@ -112,10 +112,10 @@ fn convert_op_bool(op: &ValueOps) -> fn(bool, bool) -> Value {
 
 fn convert_op_int(op: &ValueOps) -> fn(i64, i64) -> Value {
     match op {
-        ValueOps::Add => (|x, y| Value::Lit(Literal::Int(x + y))),
-        ValueOps::Sub => (|x, y| Value::Lit(Literal::Int(x - y))),
-        ValueOps::Mul => (|x, y| Value::Lit(Literal::Int(x * y))),
-        ValueOps::Div => (|x, y| Value::Lit(Literal::Int(x / y))),
+        ValueOps::Add => (|x, y| Value::Lit(Literal::Int(x.wrapping_add(y)))),
+        ValueOps::Sub => (|x, y| Value::Lit(Literal::Int(x.wrapping_sub(y)))),
+        ValueOps::Mul => (|x, y| Value::Lit(Literal::Int(x.wrapping_mul(y)))),
+        ValueOps::Div => (|x, y| Value::Lit(Literal::Int(x.wrapping_div(y)))),
         _ => unreachable!(),
     }
 }
@@ -133,6 +133,7 @@ fn convert_op_eqv(op: &ValueOps) -> fn(i64, i64) -> Value {
 
 fn convert_op_float(op: &ValueOps) -> fn(f64, f64) -> Value {
     match op {
+        // todo It doesn't look like f64 has an equivalent of wrapping_add
         ValueOps::Fadd => (|x, y| Value::Lit(Literal::Float(x + y))),
         ValueOps::Fsub => (|x, y| Value::Lit(Literal::Float(x - y))),
         ValueOps::Fmul => (|x, y| Value::Lit(Literal::Float(x * y))),
@@ -1074,7 +1075,7 @@ fn execute<'a>(
 fn parse_args<'a>(
     mut env: Environment<'a>,
     args: Option<&'a Vec<Argument>>,
-    inputs: Vec<&str>,
+    inputs: Vec<String>,
 ) -> Result<Environment<'a>, String> {
     match args {
         None => {
@@ -1094,21 +1095,36 @@ fn parse_args<'a>(
                 .try_for_each(|(index, arg)| match arg.arg_type {
                     Type::Bool => {
                         match inputs.get(index).unwrap().parse::<bool>() {
-                            Err(_) => return Err(format!("Type error on argument {}", index)),
+                            Err(_) => {
+                                return Err(format!(
+                                    "Type error on argument {}, expected bool",
+                                    index
+                                ))
+                            }
                             Ok(b) => env.set(&arg.name, Value::Lit(Literal::Bool(b))),
                         };
                         Ok(())
                     }
                     Type::Int => {
                         match inputs.get(index).unwrap().parse::<i64>() {
-                            Err(_) => return Err(format!("Type error on argument {}", index)),
+                            Err(_) => {
+                                return Err(format!(
+                                    "Type error on argument {}, expected int",
+                                    index
+                                ))
+                            }
                             Ok(i) => env.set(&arg.name, Value::Lit(Literal::Int(i))),
                         };
                         Ok(())
                     }
                     Type::Float => {
                         match inputs.get(index).unwrap().parse::<f64>() {
-                            Err(_) => return Err(format!("Type error on argument {}", index)),
+                            Err(_) => {
+                                return Err(format!(
+                                    "Type error on argument {}, expected float",
+                                    index
+                                ))
+                            }
                             Ok(f) => env.set(&arg.name, Value::Lit(Literal::Float(f))),
                         };
                         Ok(())
@@ -1120,7 +1136,7 @@ fn parse_args<'a>(
     }
 }
 
-pub fn eval_program(prog: Program, prof: bool, other_args: Vec<&str>) -> Result<(), String> {
+pub fn eval_program(prog: Program, prof: bool, other_args: Vec<String>) -> Result<(), String> {
     let funcs = {
         let len = prog.functions.len();
         let f: FxHashMap<String, (Function, FxHashMap<String, usize>)> = prog
