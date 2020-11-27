@@ -11,7 +11,7 @@ fn main() {
         .get_matches();
 
     let other_args = if args.is_present("arguments") {
-        args.values_of("arguments").unwrap().collect()
+        args.values_of("arguments").unwrap().map(|s| s.replace(",", "")).collect()
     } else {
         vec![]
     };
