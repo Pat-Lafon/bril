@@ -8,6 +8,8 @@ fn main() {
         .about("Does things with bril programs.")
         .arg(Arg::with_name("dce").long("dce").takes_value(false))
         .arg(Arg::with_name("lvn").long("lvn").takes_value(false))
+        .arg(Arg::with_name("ssa").long("ssa").takes_value(false))
+        .arg(Arg::with_name("licm").long("licm").takes_value(false))
         .arg(
             Arg::with_name("fix_names")
                 .long("fix_names")
@@ -26,7 +28,13 @@ fn main() {
        return;
     */
 
-    graphs.to_ssa();
+    if args.is_present("licm") {
+        graphs.do_licm();
+    }
+
+    if args.is_present("ssa") {
+        graphs.to_ssa();
+    }
 
     /* io::stdout()
            .write_all(graphs.function_graphs[0].graph.to_dot().as_bytes())
@@ -40,7 +48,9 @@ fn main() {
         graphs.do_dce();
     }
 
-    graphs.from_ssa();
+    if args.is_present("ssa") {
+        graphs.from_ssa();
+    }
 
     if args.is_present("fix_names") {
         graphs.fix_variable_names();

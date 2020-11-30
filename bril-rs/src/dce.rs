@@ -49,7 +49,7 @@ fn meet(vec_of_sets: Vec<HashSet<String>>) -> HashSet<String> {
 }
 
 fn liveness(graph: &Graph) -> Constraints<HashSet<String>> {
-    graph.worklist_algo(|_| HashSet::new(), transfer, meet, false)
+    graph.worklist_algo(&|_| HashSet::new(), &transfer, &meet, false)
 }
 
 fn remove_dead(block: &mut BasicBlock, mut live_out: HashSet<String>) {

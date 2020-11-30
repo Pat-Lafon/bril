@@ -7,7 +7,6 @@
     "bril-txt": true,
     "bril-vim": true,
     "docs": true,
-    "examples": true,
     "src": true,
     ".gitignore": true,
     "book.toml": true,
@@ -18,6 +17,11 @@
     ".vscode": true,
     ".github": true,
     "README.md": true,
-    "Makefile": true
+    "Makefile": true,
+    "benchmarks": true,
+    "brench": true,
+    "test": true,
+    "brilirs": true,
+    "bril-ts": true
   }
 }

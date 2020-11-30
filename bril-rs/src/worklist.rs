@@ -25,8 +25,8 @@ impl<B: Clone + PartialEq + std::fmt::Debug> Constraints<B> {
 fn new_constraints<B: Clone + PartialEq + std::fmt::Debug>(
     graph: &Graph,
     worklist: &Vec<u32>,
-    init: fn(&BasicBlock) -> B,
-    transfer: fn(B, &BasicBlock) -> B,
+    init: impl Fn(&BasicBlock) -> B,
+    transfer: impl Fn(B, &BasicBlock) -> B,
 ) -> Constraints<B> {
     let mut in_constraints = HashMap::new();
     let mut out_constraints = HashMap::new();
@@ -44,8 +44,8 @@ fn new_constraints<B: Clone + PartialEq + std::fmt::Debug>(
 
 fn worklist_algo_helper<B: Clone + PartialEq + std::fmt::Debug>(
     graph: &Graph,
-    transfer: fn(B, &BasicBlock) -> B,
-    meet: fn(Vec<B>) -> B,
+    transfer: impl Fn(B, &BasicBlock) -> B,
+    meet: impl Fn(Vec<B>) -> B,
     forward: bool,
     mut worklist: Vec<u32>,
     mut constraints: Constraints<B>,
@@ -91,9 +91,9 @@ fn worklist_algo_helper<B: Clone + PartialEq + std::fmt::Debug>(
 impl Graph {
     pub fn worklist_algo<B: Clone + PartialEq + std::fmt::Debug>(
         &self,
-        init: fn(&BasicBlock) -> B,
-        transfer: fn(B, &BasicBlock) -> B,
-        meet: fn(Vec<B>) -> B,
+        init: &Fn(&BasicBlock) -> B,
+        transfer: &Fn(B, &BasicBlock) -> B,
+        meet: &Fn(Vec<B>) -> B,
         forward: bool,
     ) -> Constraints<B> {
         let worklist = self.vertices.keys().copied().collect::<Vec<u32>>();

@@ -21,7 +21,7 @@ check:
 .PHONY: example
 example:
 	#bril2json < ../test/interp/jmp.bril | cargo +nightly run -q | dot -Tpdf -o cfg.pdf
-	bril2json < test/pointers/fib.bril | cargo +nightly run -q -- --fix_names | bril2txt
+	bril2json < benchmarks/sum-sq-diff.bril | cargo +nightly run -q -- --licm | brili -p 100
 	#bril2json < benchmarks/check-primes.bril | cargo +nightly run -q -- --fix_names | dot -Tpdf -o cfg.pdf
 
 	#| dot -Tpdf -o filename.pdf

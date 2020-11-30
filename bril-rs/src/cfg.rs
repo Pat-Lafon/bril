@@ -61,6 +61,7 @@ pub struct Graph {
     pub starting_vertex: u32,
     pub vertices: HashMap<u32, BasicBlock>,
     pub label_map: HashMap<String, u32>, // I'm not sure if I need this but I'll hold on to it for ease of use
+    pub num_blocks: u32,
 }
 
 impl Graph {
@@ -137,7 +138,9 @@ impl Graph {
             verts_done.push(block_idx);
             let mut try_add = |x| {
                 if !verts_done.contains(&x) && !verts_to_do.contains(&x) {
-                    if let Successor::Jump(i) = self.vertices.get(&x).unwrap().successor {
+                    if let Some(Successor::Jump(i)) =
+                        self.vertices.get(&x).map(|r| r.successor.clone())
+                    {
                         // If there isn't a final_label, then give a dummy number that will never be true
                         // Else, insert it so it is the last block to be done
                         if self.label_map.get(&final_label!()).unwrap_or(&u32::MAX) == &i {
@@ -205,6 +208,82 @@ impl Graph {
             });
 
         self
+    }
+
+    pub fn insert_block_between(
+        &mut self,
+        new_block_label: String,
+        block: u32,
+        preds: Vec<u32>,
+    ) -> u32 {
+        let new_block_num = self.num_blocks;
+        self.num_blocks += 1;
+
+        let previous_block = self.vertices.get(&block).unwrap().clone();
+
+        self.label_map
+            .insert(new_block_label.clone(), new_block_num);
+        let new_block = BasicBlock {
+            label: new_block_label.clone(),
+            index: new_block_num,
+            code: vec![Instruction::Effect {
+                op: EffectOps::Jump,
+                args: None,
+                funcs: None,
+                labels: Some(vec![previous_block.label.clone()]),
+            }],
+            predecessor: preds.clone(),
+            successor: Successor::Jump(previous_block.index),
+        };
+        self.vertices.insert(new_block_num, new_block);
+        if self.starting_vertex == block {
+            self.starting_vertex = new_block_num
+        }
+
+        // update predecessors
+
+        preds.iter().for_each(|i| {
+            let pred_block = self.vertices.get_mut(i).unwrap();
+            match pred_block.successor {
+                Successor::End => unreachable!(),
+                Successor::Jump(_) => {
+                    pred_block.successor = Successor::Jump(new_block_num);
+                    pred_block.code.pop();
+                    pred_block.code.push(Instruction::Effect {
+                        op: EffectOps::Jump,
+                        args: None,
+                        funcs: None,
+                        labels: Some(vec![new_block_label.clone()]),
+                    });
+                }
+                Successor::Conditional {
+                    true_branch,
+                    false_branch,
+                } => {
+                    if block == true_branch {
+                        pred_block.successor = Successor::Conditional {
+                            true_branch: new_block_num,
+                            false_branch,
+                        };
+                        let mut final_instr = pred_block.code.pop().unwrap();
+                        let mut args = final_instr.get_labels().unwrap().unwrap();
+                        args[0] = new_block_label.clone();
+                        final_instr.set_labels(Some(args));
+                        pred_block.code.push(final_instr);
+                    } else {
+                    }
+                }
+            }
+        });
+
+        let previous_block = self.vertices.get_mut(&block).unwrap();
+        let mut current_preds = previous_block.predecessor.clone();
+        preds.into_iter().for_each(|i| {
+            current_preds.remove_item(&i);
+        });
+        current_preds.push(new_block_num);
+        previous_block.predecessor = current_preds;
+        new_block_num
     }
 }
 
@@ -550,5 +629,6 @@ fn create_graph(code: Vec<Code>, name: String) -> Graph {
         starting_vertex: starting_vertex.unwrap(),
         vertices,
         label_map,
+        num_blocks: index_acc,
     }
 }

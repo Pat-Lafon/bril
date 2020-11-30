@@ -75,6 +75,49 @@ pub enum Instruction {
 }
 
 impl Instruction {
+    // for inserting blocks
+    pub fn get_labels(&self) -> Option<Option<Vec<String>>> {
+        match self {
+            Instruction::Constant { .. } => None,
+            Instruction::Value { labels, .. } => Some(labels.clone()),
+            Instruction::Effect { labels, .. } => Some(labels.clone()),
+        }
+    }
+    pub fn set_labels(&mut self, new_labels: Option<Vec<String>>) {
+        match self.clone() {
+            Instruction::Constant { .. } => panic!("There is no labels to set"),
+            Instruction::Value {
+                op,
+                dest,
+                op_type,
+                args,
+                funcs,
+                labels: _,
+            } => {
+                *self = Instruction::Value {
+                    op,
+                    dest,
+                    op_type,
+                    args,
+                    funcs,
+                    labels: new_labels,
+                }
+            }
+            Instruction::Effect {
+                op,
+                args,
+                funcs,
+                labels: _,
+            } => {
+                *self = Instruction::Effect {
+                    op,
+                    args,
+                    funcs,
+                    labels: new_labels,
+                }
+            }
+        }
+    }
     // for ssa
     pub fn get_args(&self) -> Option<Option<Vec<String>>> {
         match self {
