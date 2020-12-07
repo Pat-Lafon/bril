@@ -81,10 +81,15 @@ pub enum EffectOps {
     Return,
     Print,
     Nop,
+    #[cfg(memory)]
     Store,
+    #[cfg(memory)]
     Free,
+    #[cfg(speculate)]
     Speculate,
+    #[cfg(speculate)]
     Commit,
+    #[cfg(speculate)]
     Guard,
 }
 
@@ -105,18 +110,31 @@ pub enum ValueOps {
     Or,
     Call,
     Id,
+    #[cfg(ssa)]
     Phi,
+    #[cfg(float)]
     Fadd,
+    #[cfg(float)]
     Fsub,
+    #[cfg(float)]
     Fmul,
+    #[cfg(float)]
     Fdiv,
+    #[cfg(float)]
     Feq,
+    #[cfg(float)]
     Flt,
+    #[cfg(float)]
     Fgt,
+    #[cfg(float)]
     Fle,
+    #[cfg(float)]
     Fge,
+    #[cfg(memory)]
     Alloc,
+    #[cfg(memory)]
     Load,
+    #[cfg(memory)]
     PtrAdd,
 }
 
@@ -126,6 +144,7 @@ pub enum Type {
     Int,
     Bool,
     Float,
+    #[cfg(memory)]
     #[serde(rename = "ptr")]
     Pointer(Box<Type>),
 }
