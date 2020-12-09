@@ -1,3 +1,4 @@
+use bril_rs::output_program;
 use bril_rs::{
     Argument, Code, ConstOps, EffectOps, Function, Instruction, Literal, Program, Type, ValueOps,
 };
@@ -300,17 +301,133 @@ macro_rules! err {
     };
 }
 
+fn labelize(c: &Code) -> String {
+    match c {
+        Code::Label { label } => label.to_string(),
+        Code::Instruction(_) => panic!("You can only labelize a label"),
+    }
+}
+
+fn compile_trace(current_func: &Function, mut trace: Vec<usize>, mut other_funcs: Vec<Function>) {
+    let mut f = current_func.clone();
+    let starting_loop = trace.last().unwrap().clone();
+
+    trace.pop(); // The final index is just the label we jumped back to to start the loop over again so this should be removed from the trace
+
+    let start_of_loop_in_trace = trace.iter().position(|x| x == &starting_loop).unwrap();
+    let (head, loop_trace) = trace.split_at(start_of_loop_in_trace).clone();
+
+    let actual_loop_start = labelize(
+        current_func
+            .instrs
+            .get(*loop_trace.first().unwrap())
+            .unwrap(),
+    );
+
+    let new_loop_start = format!("speculate_{}", actual_loop_start);
+
+    let new_trace: Vec<Code> = loop_trace
+        .into_iter()
+        .map(|idx| current_func.instrs.get(*idx).cloned().unwrap())
+        .collect();
+
+    let mut new_instrs = f.instrs.clone();
+
+    if let Some(i) = head.last() {
+        let c = new_instrs.get_mut(*i).unwrap();
+        match c {
+            Code::Label { label: _ } => {}
+            Code::Instruction(Instruction::Effect {
+                op: EffectOps::Jump,
+                args: _,
+                funcs: _,
+                labels: _,
+            }) => {
+                *c = Code::Instruction(Instruction::Effect {
+                    op: EffectOps::Jump,
+                    args: None,
+                    funcs: None,
+                    labels: Some(vec![new_loop_start]),
+                })
+            }
+            Code::Instruction(Instruction::Effect {
+                op: EffectOps::Branch,
+                args: _,
+                funcs: _,
+                labels: Some(v),
+            }) =>
+            v.iter_mut().for_each(|i| if i == &actual_loop_start {*i = new_loop_start.clone()}),
+
+            Code::Instruction(_) => {}
+        }
+    }
+
+    new_instrs.insert(
+        0,
+        Code::Instruction(Instruction::Effect {
+            op: EffectOps::Speculate,
+            args: None,
+            funcs: None,
+            labels: None,
+        }),
+    );
+    new_instrs.push(Code::Instruction(Instruction::Effect {
+        op: EffectOps::Commit,
+        args: None,
+        funcs: None,
+        labels: None,
+    }));
+    new_instrs.splice(start_of_loop_in_trace..start_of_loop_in_trace, new_trace);
+
+    f.instrs = new_instrs;
+
+    other_funcs.push(f);
+    output_program(&Program {
+        functions: other_funcs,
+    });
+
+    std::process::exit(0)
+}
+
 fn execute<'a>(
     func: &'a Function,
     label_map: &'a FxHashMap<String, usize>,
     mut state: State<'a>,
     mut env: Environment<'a>,
     funcs: &'a FxHashMap<String, (Function, FxHashMap<String, usize>)>,
+    tracing: bool,
 ) -> Result<(State<'a>, Option<Value>), String> {
     let mut index = 0;
 
+    let mut trace = Vec::new();
+
     while let Some(code) = func.instrs.get(index) {
         state.instruction_count += 1;
+
+        if tracing {
+            if trace.contains(&index) {
+                trace.push(index);
+                // call off to another function to restitch trace
+                // Ends execution
+                compile_trace(
+                    func,
+                    trace.clone(),
+                    funcs
+                        .iter()
+                        .filter_map(|(name, (f, _))| {
+                            if name != &func.name {
+                                Some(f.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect(),
+                );
+            } else {
+                trace.push(index);
+                //println!("{:?}", trace);
+            }
+        }
 
         match code {
             Code::Label { label } => {
@@ -612,7 +729,7 @@ fn execute<'a>(
                 }
 
                 let (next_state, ret_opt) =
-                    execute(&callee_f, callee_map, next_state, next_env, funcs)?;
+                    execute(&callee_f, callee_map, next_state, next_env, funcs, tracing)?;
                 let ret = ret_opt.unwrap();
 
                 state.instruction_count = next_state.instruction_count;
@@ -1006,7 +1123,8 @@ fn execute<'a>(
                     )
                 }
 
-                let (next_state, _) = execute(&callee_f, callee_map, next_state, next_env, funcs)?;
+                let (next_state, _) =
+                    execute(&callee_f, callee_map, next_state, next_env, funcs, tracing)?;
 
                 state.instruction_count = next_state.instruction_count;
 
@@ -1055,7 +1173,10 @@ fn execute<'a>(
                     | EffectOps::Branch
                     | EffectOps::Call
                     | EffectOps::Store
-                    | EffectOps::Free,
+                    | EffectOps::Free
+                    | EffectOps::Speculate
+                    | EffectOps::Commit
+                    | EffectOps::Guard,
                 args: _,
                 funcs: _,
                 labels: _,
@@ -1136,7 +1257,12 @@ fn parse_args<'a>(
     }
 }
 
-pub fn eval_program(prog: Program, prof: bool, other_args: Vec<String>) -> Result<(), String> {
+pub fn eval_program(
+    prog: Program,
+    prof: bool,
+    tracing: bool,
+    other_args: Vec<String>,
+) -> Result<(), String> {
     let funcs = {
         let len = prog.functions.len();
         let f: FxHashMap<String, (Function, FxHashMap<String, usize>)> = prog
@@ -1179,7 +1305,7 @@ pub fn eval_program(prog: Program, prof: bool, other_args: Vec<String>) -> Resul
     let env = parse_args(env, args, other_args)?;
 
     // execute
-    let (state, _) = execute(f, label_map, state, env, &funcs)?;
+    let (state, _) = execute(f, label_map, state, env, &funcs, tracing)?;
 
     // Check that the heap is empty
     if !state.heap.borrow().is_empty() {

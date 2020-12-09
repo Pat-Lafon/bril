@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Program {
@@ -161,4 +161,14 @@ pub fn load_program() -> Program {
     let mut buffer = String::new();
     io::stdin().read_to_string(&mut buffer).unwrap();
     serde_json::from_str(&buffer).unwrap()
+}
+
+pub fn output_program(p: &Program) {
+    io::stdout()
+        .write_all(
+            serde_json::to_string(p)
+            .unwrap()
+            .as_bytes(),
+        )
+        .unwrap();
 }

@@ -30,7 +30,7 @@ clippy:
 example:
 	#bril2json < ../test/interp/jmp.bril | cargo +nightly run -q | dot -Tpdf -o cfg.pdf
 	# bril2json < test/interp/alloc.bril | cargo +nightly run -q
-	bril2json < benchmarks/ackermann.bril | cargo +nightly run -- -p 3 6
+	bril2json < while.bril| cargo +nightly run -- --tracing 2 | bril2txt
 
 	#| dot -Tpdf -o filename.pdf
 
