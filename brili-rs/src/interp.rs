@@ -305,7 +305,7 @@ fn execute<'a>(
     label_map: &'a FxHashMap<String, usize>,
     mut state: State<'a>,
     mut env: Environment<'a>,
-    funcs: &'a FxHashMap<String, (Function, FxHashMap<String, usize>)>,
+    func_map: &'a FxHashMap<String, (Function, FxHashMap<String, usize>)>,
 ) -> Result<(State<'a>, Option<Value>), String> {
     let mut index = 0;
 
@@ -343,11 +343,11 @@ fn execute<'a>(
                 op: op @ (ValueOps::Add | ValueOps::Sub | ValueOps::Mul | ValueOps::Div),
                 dest,
                 op_type: Type::Int,
-                args: Some(vec),
+                args,
                 funcs: _,
                 labels: _,
             }) => {
-                if vec.len() != 2 {
+                if args.len() != 2 {
                     err!(
                         func,
                         index,
@@ -357,12 +357,12 @@ fn execute<'a>(
                 let arg1 = err!(
                     func,
                     index,
-                    env.get(vec.get(0).unwrap()).and_then(expect_int)
+                    env.get(args.get(0).unwrap()).and_then(expect_int)
                 );
                 let arg2 = err!(
                     func,
                     index,
-                    env.get(vec.get(1).unwrap()).and_then(expect_int)
+                    env.get(args.get(1).unwrap()).and_then(expect_int)
                 );
 
                 env.set(&dest, convert_op_int(op)(arg1, arg2));
@@ -372,11 +372,11 @@ fn execute<'a>(
                 op: op @ (ValueOps::Eq | ValueOps::Lt | ValueOps::Gt | ValueOps::Le | ValueOps::Ge),
                 dest,
                 op_type: Type::Bool,
-                args: Some(vec),
+                args,
                 funcs: _,
                 labels: _,
             }) => {
-                if vec.len() != 2 {
+                if args.len() != 2 {
                     err!(
                         func,
                         index,
@@ -386,12 +386,12 @@ fn execute<'a>(
                 let arg1 = err!(
                     func,
                     index,
-                    env.get(vec.get(0).unwrap()).and_then(expect_int)
+                    env.get(args.get(0).unwrap()).and_then(expect_int)
                 );
                 let arg2 = err!(
                     func,
                     index,
-                    env.get(vec.get(1).unwrap()).and_then(expect_int)
+                    env.get(args.get(1).unwrap()).and_then(expect_int)
                 );
 
                 env.set(&dest, convert_op_eqv(op)(arg1, arg2));
@@ -401,11 +401,11 @@ fn execute<'a>(
                 op: ValueOps::Not,
                 dest,
                 op_type: Type::Bool,
-                args: Some(vec),
+                args,
                 funcs: _,
                 labels: _,
             }) => {
-                if vec.len() != 1 {
+                if args.len() != 1 {
                     err!(
                         func,
                         index,
@@ -415,7 +415,7 @@ fn execute<'a>(
                 let arg1 = err!(
                     func,
                     index,
-                    env.get(vec.get(0).unwrap()).and_then(expect_bool)
+                    env.get(args.get(0).unwrap()).and_then(expect_bool)
                 );
 
                 env.set(&dest, Value::Lit(Literal::Bool(!arg1)));
@@ -425,11 +425,11 @@ fn execute<'a>(
                 op: op @ (ValueOps::And | ValueOps::Or),
                 dest,
                 op_type: Type::Bool,
-                args: Some(vec),
+                args,
                 funcs: _,
                 labels: _,
             }) => {
-                if vec.len() != 2 {
+                if args.len() != 2 {
                     err!(
                         func,
                         index,
@@ -439,12 +439,12 @@ fn execute<'a>(
                 let arg1 = err!(
                     func,
                     index,
-                    env.get(vec.get(0).unwrap()).and_then(expect_bool)
+                    env.get(args.get(0).unwrap()).and_then(expect_bool)
                 );
                 let arg2 = err!(
                     func,
                     index,
-                    env.get(vec.get(1).unwrap()).and_then(expect_bool)
+                    env.get(args.get(1).unwrap()).and_then(expect_bool)
                 );
 
                 env.set(&dest, convert_op_bool(op)(arg1, arg2));
@@ -454,11 +454,11 @@ fn execute<'a>(
                 op: op @ (ValueOps::Fadd | ValueOps::Fsub | ValueOps::Fmul | ValueOps::Fdiv),
                 dest,
                 op_type: Type::Float,
-                args: Some(vec),
+                args,
                 funcs: _,
                 labels: _,
             }) => {
-                if vec.len() != 2 {
+                if args.len() != 2 {
                     err!(
                         func,
                         index,
@@ -468,12 +468,12 @@ fn execute<'a>(
                 let arg1 = err!(
                     func,
                     index,
-                    env.get(vec.get(0).unwrap()).and_then(expect_float)
+                    env.get(args.get(0).unwrap()).and_then(expect_float)
                 );
                 let arg2 = err!(
                     func,
                     index,
-                    env.get(vec.get(1).unwrap()).and_then(expect_float)
+                    env.get(args.get(1).unwrap()).and_then(expect_float)
                 );
 
                 env.set(&dest, convert_op_float(op)(arg1, arg2));
@@ -484,11 +484,11 @@ fn execute<'a>(
                     op @ (ValueOps::Feq | ValueOps::Flt | ValueOps::Fgt | ValueOps::Fle | ValueOps::Fge),
                 dest,
                 op_type: Type::Bool,
-                args: Some(vec),
+                args,
                 funcs: _,
                 labels: _,
             }) => {
-                if vec.len() != 2 {
+                if args.len() != 2 {
                     err!(
                         func,
                         index,
@@ -498,12 +498,12 @@ fn execute<'a>(
                 let arg1 = err!(
                     func,
                     index,
-                    env.get(vec.get(0).unwrap()).and_then(expect_float)
+                    env.get(args.get(0).unwrap()).and_then(expect_float)
                 );
                 let arg2 = err!(
                     func,
                     index,
-                    env.get(vec.get(1).unwrap()).and_then(expect_float)
+                    env.get(args.get(1).unwrap()).and_then(expect_float)
                 );
 
                 env.set(&dest, convert_op_feqv(op)(arg1, arg2));
@@ -513,18 +513,18 @@ fn execute<'a>(
                 op: ValueOps::Id,
                 dest,
                 op_type,
-                args: Some(vec),
+                args,
                 funcs: _,
                 labels: _,
             }) => {
-                if vec.len() != 1 {
+                if args.len() != 1 {
                     err!(
                         func,
                         index,
                         Err("Unexpected number of arguments".to_string())
                     )
                 }
-                let arg1 = err!(func, index, env.get(vec.get(0).unwrap())).clone();
+                let arg1 = err!(func, index, env.get(args.get(0).unwrap())).clone();
 
                 if !type_check_val(&arg1, op_type) {
                     err!(func, index, Err("Type error".to_string()));
@@ -538,10 +538,10 @@ fn execute<'a>(
                 dest,
                 op_type,
                 args,
-                funcs: Some(fvec),
+                funcs,
                 labels: _,
             }) => {
-                if fvec.len() != 1 {
+                if funcs.len() != 1 {
                     err!(
                         func,
                         index,
@@ -551,20 +551,24 @@ fn execute<'a>(
                 let (callee_f, callee_map) = err!(
                     func,
                     index,
-                    funcs
-                        .get(fvec.get(0).unwrap())
+                    func_map
+                        .get(funcs.get(0).unwrap())
                         .ok_or(format!("no function of name {} found", func.name))
                 );
 
                 let next_state = State::new_state(&state);
                 let mut next_env = Environment::default();
 
-                if args.is_none() && callee_f.args.is_none() {
+                if args.is_empty() && callee_f.args.is_empty() {
                     // do nothing because we have not args to add to the environment
-                } else if args.is_some() && callee_f.args.is_some() {
-                    let args_vec = args.as_ref().unwrap();
-                    let callee_vec = callee_f.args.as_ref().unwrap();
-                    if args_vec.len() != callee_vec.len() {
+                } else if args.len() != callee_f.args.len() {
+                    err!(
+                        func,
+                        index,
+                        Err("Unexpected number of arguments".to_string())
+                    )
+                } else {
+                    if args.len() != callee_f.args.len() {
                         err!(
                             func,
                             index,
@@ -574,9 +578,8 @@ fn execute<'a>(
                     err!(
                         func,
                         index,
-                        args_vec
-                            .iter()
-                            .zip(callee_vec.iter())
+                        args.iter()
+                            .zip(callee_f.args.iter())
                             .map(|(arg_name, expected_arg)| {
                                 let arg = env.get(arg_name)?;
                                 if !type_check_val(&arg, &expected_arg.arg_type) {
@@ -586,12 +589,6 @@ fn execute<'a>(
                             })
                             .try_for_each(|res| res.map(|(name, val)| next_env.set(name, val)))
                     );
-                } else {
-                    err!(
-                        func,
-                        index,
-                        Err("Unexpected number of arguments".to_string())
-                    )
                 }
 
                 let ret_type = err!(
@@ -612,7 +609,7 @@ fn execute<'a>(
                 }
 
                 let (next_state, ret_opt) =
-                    execute(&callee_f, callee_map, next_state, next_env, funcs)?;
+                    execute(&callee_f, callee_map, next_state, next_env, func_map)?;
                 let ret = ret_opt.unwrap();
 
                 state.instruction_count = next_state.instruction_count;
@@ -628,11 +625,11 @@ fn execute<'a>(
                 op: ValueOps::Phi,
                 dest,
                 op_type,
-                args: Some(vec),
+                args,
                 funcs: _,
-                labels: Some(label_vec),
+                labels,
             }) => {
-                if vec.len() != label_vec.len() {
+                if args.len() != labels.len() {
                     err!(
                         func,
                         index,
@@ -651,10 +648,10 @@ fn execute<'a>(
                 let val = err!(
                     func,
                     index,
-                    label_vec
+                    labels
                         .iter()
                         .position(|l| l == state.last_label.as_ref().unwrap())
-                        .and_then(|i| vec.get(i))
+                        .and_then(|i| args.get(i))
                         .ok_or_else(|| "Last label was not found in phi node".to_string())
                         .and_then(|var| env.get(&var))
                 )
@@ -671,11 +668,11 @@ fn execute<'a>(
                 op: ValueOps::PtrAdd,
                 dest,
                 op_type,
-                args: Some(vec),
+                args,
                 funcs: _,
                 labels: _,
             }) => {
-                if vec.len() != 2 {
+                if args.len() != 2 {
                     err!(
                         func,
                         index,
@@ -685,12 +682,12 @@ fn execute<'a>(
                 let arg1 = err!(
                     func,
                     index,
-                    env.get(vec.get(0).unwrap()).and_then(expect_ptr)
+                    env.get(args.get(0).unwrap()).and_then(expect_ptr)
                 );
                 let arg2 = err!(
                     func,
                     index,
-                    env.get(vec.get(1).unwrap()).and_then(expect_int)
+                    env.get(args.get(1).unwrap()).and_then(expect_int)
                 );
 
                 let val = Value::Ptr(arg1.add(arg2));
@@ -706,11 +703,11 @@ fn execute<'a>(
                 op: ValueOps::Alloc,
                 dest,
                 op_type,
-                args: Some(vec),
+                args,
                 funcs: _,
                 labels: _,
             }) => {
-                if vec.len() != 1 {
+                if args.len() != 1 {
                     err!(
                         func,
                         index,
@@ -720,7 +717,7 @@ fn execute<'a>(
                 let arg1 = err!(
                     func,
                     index,
-                    env.get(vec.get(0).unwrap()).and_then(expect_int)
+                    env.get(args.get(0).unwrap()).and_then(expect_int)
                 );
 
                 let val = err!(
@@ -736,11 +733,11 @@ fn execute<'a>(
                 op: ValueOps::Load,
                 dest,
                 op_type,
-                args: Some(vec),
+                args,
                 funcs: _,
                 labels: _,
             }) => {
-                if vec.len() != 1 {
+                if args.len() != 1 {
                     err!(
                         func,
                         index,
@@ -750,7 +747,7 @@ fn execute<'a>(
                 let arg1 = err!(
                     func,
                     index,
-                    env.get(vec.get(0).unwrap()).and_then(expect_ptr)
+                    env.get(args.get(0).unwrap()).and_then(expect_ptr)
                 );
 
                 let val = err!(func, index, state.heap.borrow_mut().read(&arg1)).clone();
@@ -766,7 +763,7 @@ fn execute<'a>(
                 op: EffectOps::Jump,
                 args: _,
                 funcs: _,
-                labels: Some(labels),
+                labels,
             }) => {
                 if labels.len() != 1 {
                     err!(func, index, Err("Unexpected number of labels".to_string()))
@@ -781,9 +778,9 @@ fn execute<'a>(
             }
             Code::Instruction(Instruction::Effect {
                 op: EffectOps::Branch,
-                args: Some(args),
+                args,
                 funcs: _,
-                labels: Some(labels),
+                labels,
             }) => {
                 if args.len() != 1 {
                     err!(
@@ -820,20 +817,16 @@ fn execute<'a>(
                 args,
                 funcs: _,
                 labels: _,
-            }) => match args {
-                None => {
-                    if func.return_type.is_none() {
+            }) =>{
+                    if args.is_empty() && func.return_type.is_none() {
                         return Ok((state, None));
-                    } else {
+                    } else if args.is_empty() {
                         err!(
                             func,
                             index,
                             Err("Expected return argument and found none".to_string())
                         )
-                    }
-                }
-                Some(args) => {
-                    if args.len() != 1 {
+                    }else if args.len() != 1 {
                         err!(
                             func,
                             index,
@@ -853,7 +846,7 @@ fn execute<'a>(
                             err!(func, index, Err("Type Error".to_string()))
                         }
                     }
-                }
+
             },
             Code::Instruction(Instruction::Effect {
                 op: EffectOps::Nop,
@@ -870,22 +863,21 @@ fn execute<'a>(
                 let vals: String = err!(
                     func,
                     index,
-                    args.as_ref()
-                        .unwrap_or(&vec![])
+                    args
                         .iter()
                         .map(|n| env.get(n).map(|v| v.to_string()))
-                        .collect::<Result<String, String>>()
+                        .collect::<Result<Vec<String>, String>>().and_then(|v| Ok(v.join(" ")))
                 );
                 println!("{}", vals);
                 index += 1
             }
             Code::Instruction(Instruction::Effect {
                 op: EffectOps::Store,
-                args: Some(vec),
+                args,
                 funcs: _,
                 labels: _,
             }) => {
-                if vec.len() != 2 {
+                if args.len() != 2 {
                     err!(
                         func,
                         index,
@@ -895,10 +887,10 @@ fn execute<'a>(
                 let arg1 = err!(
                     func,
                     index,
-                    env.get(vec.get(0).unwrap()).and_then(expect_ptr)
+                    env.get(args.get(0).unwrap()).and_then(expect_ptr)
                 );
 
-                let arg2 = err!(func, index, env.get(vec.get(1).unwrap()));
+                let arg2 = err!(func, index, env.get(args.get(1).unwrap()));
 
                 let typ = match arg1.ptr_type {
                     Type::Bool | Type::Float | Type::Int => unreachable!(),
@@ -919,11 +911,11 @@ fn execute<'a>(
             }
             Code::Instruction(Instruction::Effect {
                 op: EffectOps::Free,
-                args: Some(vec),
+                args,
                 funcs: _,
                 labels: _,
             }) => {
-                if vec.len() != 1 {
+                if args.len() != 1 {
                     err!(
                         func,
                         index,
@@ -933,7 +925,7 @@ fn execute<'a>(
                 let arg1 = err!(
                     func,
                     index,
-                    env.get(vec.get(0).unwrap()).and_then(expect_ptr)
+                    env.get(args.get(0).unwrap()).and_then(expect_ptr)
                 );
 
                 err!(func, index, state.heap.borrow_mut().free(arg1));
@@ -942,10 +934,10 @@ fn execute<'a>(
             Code::Instruction(Instruction::Effect {
                 op: EffectOps::Call,
                 args,
-                funcs: Some(fvec),
+                funcs,
                 labels: _,
             }) => {
-                if fvec.len() != 1 {
+                if funcs.len() != 1 {
                     err!(
                         func,
                         index,
@@ -955,20 +947,24 @@ fn execute<'a>(
                 let (callee_f, callee_map) = err!(
                     func,
                     index,
-                    funcs
-                        .get(fvec.get(0).unwrap())
+                    func_map
+                        .get(funcs.get(0).unwrap())
                         .ok_or(format!("no function of name {} found", func.name))
                 );
 
                 let next_state = State::new_state(&state);
                 let mut next_env = Environment::default();
 
-                if args.is_none() && callee_f.args.is_none() {
+                if args.is_empty() && callee_f.args.is_empty() {
                     // do nothing because we have not args to add to the environment
-                } else if args.is_some() && callee_f.args.is_some() {
-                    let args_vec = args.as_ref().unwrap();
-                    let callee_vec = callee_f.args.as_ref().unwrap();
-                    if args_vec.len() != callee_vec.len() {
+                } else if args.len() != callee_f.args.len() {
+                    err!(
+                        func,
+                        index,
+                        Err("Unexpected number of arguments".to_string())
+                    )
+                } else {
+                    if args.len() != callee_f.args.len() {
                         err!(
                             func,
                             index,
@@ -978,9 +974,8 @@ fn execute<'a>(
                     err!(
                         func,
                         index,
-                        args_vec
-                            .iter()
-                            .zip(callee_vec.iter())
+                        args.iter()
+                            .zip(callee_f.args.iter())
                             .map(|(arg_name, expected_arg)| {
                                 let arg = env.get(arg_name)?;
                                 if !type_check_val(&arg, &expected_arg.arg_type) {
@@ -990,12 +985,6 @@ fn execute<'a>(
                             })
                             .try_for_each(|res| res.map(|(name, val)| next_env.set(name, val)))
                     );
-                } else {
-                    err!(
-                        func,
-                        index,
-                        Err("Unexpected number of arguments".to_string())
-                    )
                 }
 
                 if callee_f.return_type.is_some() {
@@ -1006,7 +995,7 @@ fn execute<'a>(
                     )
                 }
 
-                let (next_state, _) = execute(&callee_f, callee_map, next_state, next_env, funcs)?;
+                let (next_state, _) = execute(&callee_f, callee_map, next_state, next_env, func_map)?;
 
                 state.instruction_count = next_state.instruction_count;
 
@@ -1034,28 +1023,9 @@ fn execute<'a>(
                     | ValueOps::Fge
                     | ValueOps::Not
                     | ValueOps::And
-                    | ValueOps::Or
-                    | ValueOps::Call
-                    | ValueOps::Alloc
-                    | ValueOps::Load
-                    | ValueOps::Id
-                    | ValueOps::Phi
-                    | ValueOps::PtrAdd,
+                    | ValueOps::Or,
                 dest: _,
                 op_type: _,
-                args: _,
-                funcs: _,
-                labels: _,
-            }) => {
-                err!(func, index, Err("Invalid instruction".to_string()))
-            }
-            Code::Instruction(Instruction::Effect {
-                op:
-                    EffectOps::Jump
-                    | EffectOps::Branch
-                    | EffectOps::Call
-                    | EffectOps::Store
-                    | EffectOps::Free,
                 args: _,
                 funcs: _,
                 labels: _,
@@ -1074,65 +1044,49 @@ fn execute<'a>(
 
 fn parse_args<'a>(
     mut env: Environment<'a>,
-    args: Option<&'a Vec<Argument>>,
+    args: &'a Vec<Argument>,
     inputs: Vec<String>,
 ) -> Result<Environment<'a>, String> {
-    match args {
-        None => {
-            if inputs.is_empty() {
-                Ok(env)
-            } else {
-                Err("Received arguments but expected none".to_string())
-            }
-        }
-        Some(a) => {
-            if inputs.len() != a.len() {
-                return Err("Incorrect number of inputs".to_string());
-            }
-
-            a.iter()
-                .enumerate()
-                .try_for_each(|(index, arg)| match arg.arg_type {
-                    Type::Bool => {
-                        match inputs.get(index).unwrap().parse::<bool>() {
-                            Err(_) => {
-                                return Err(format!(
-                                    "Type error on argument {}, expected bool",
-                                    index
-                                ))
-                            }
-                            Ok(b) => env.set(&arg.name, Value::Lit(Literal::Bool(b))),
-                        };
-                        Ok(())
-                    }
-                    Type::Int => {
-                        match inputs.get(index).unwrap().parse::<i64>() {
-                            Err(_) => {
-                                return Err(format!(
-                                    "Type error on argument {}, expected int",
-                                    index
-                                ))
-                            }
-                            Ok(i) => env.set(&arg.name, Value::Lit(Literal::Int(i))),
-                        };
-                        Ok(())
-                    }
-                    Type::Float => {
-                        match inputs.get(index).unwrap().parse::<f64>() {
-                            Err(_) => {
-                                return Err(format!(
-                                    "Type error on argument {}, expected float",
-                                    index
-                                ))
-                            }
-                            Ok(f) => env.set(&arg.name, Value::Lit(Literal::Float(f))),
-                        };
-                        Ok(())
-                    }
-                    Type::Pointer(_) => Err("Can't pass a pointer as input".to_string()),
-                })?;
-            Ok(env)
-        }
+    if args.is_empty() && inputs.is_empty() {
+        Ok(env)
+    } else if inputs.is_empty() {
+        Err("Received arguments but expected none".to_string())
+    } else if inputs.len() != args.len() {
+        return Err("Incorrect number of inputs".to_string());
+    } else {
+        args.iter()
+            .enumerate()
+            .try_for_each(|(index, arg)| match arg.arg_type {
+                Type::Bool => {
+                    match inputs.get(index).unwrap().parse::<bool>() {
+                        Err(_) => {
+                            return Err(format!("Type error on argument {}, expected bool", index))
+                        }
+                        Ok(b) => env.set(&arg.name, Value::Lit(Literal::Bool(b))),
+                    };
+                    Ok(())
+                }
+                Type::Int => {
+                    match inputs.get(index).unwrap().parse::<i64>() {
+                        Err(_) => {
+                            return Err(format!("Type error on argument {}, expected int", index))
+                        }
+                        Ok(i) => env.set(&arg.name, Value::Lit(Literal::Int(i))),
+                    };
+                    Ok(())
+                }
+                Type::Float => {
+                    match inputs.get(index).unwrap().parse::<f64>() {
+                        Err(_) => {
+                            return Err(format!("Type error on argument {}, expected float", index))
+                        }
+                        Ok(f) => env.set(&arg.name, Value::Lit(Literal::Float(f))),
+                    };
+                    Ok(())
+                }
+                Type::Pointer(_) => Err("Can't pass a pointer as input".to_string()),
+            })?;
+        Ok(env)
     }
 }
 

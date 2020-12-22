@@ -34,11 +34,13 @@ example:
 
 	#| dot -Tpdf -o filename.pdf
 
-TESTS := test/interp/*.bril \
+#TESTS := test/interp/*.bril \
 		 benchmarks/*.bril
+
+TESTS := benchmarks/*.bril
 
 .PHONY: test
 test:
-	turnt -v $(TURNTARGS) $(TESTS)
+	turnt -v --diff $(TURNTARGS) $(TESTS)
 
 # todo include a thing for benchmarking
