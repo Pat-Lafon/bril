@@ -18,4 +18,4 @@ twox-hash    = "~1.5.0"
 [dependencies.bril-rs]
 version = "0.1.0"
 path = "../bril-rs"
-features = ["ssa", "memory", "float", "speculate"]
+features = ["ssa", "memory", "float", "speculate", "algebraic"]

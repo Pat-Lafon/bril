@@ -16,6 +16,7 @@ pub enum InterpError {
   LabelNotFound(String),
   BadValueType(bril_rs::Type, bril_rs::Type), // (expected, actual)
   IoError(Box<std::io::Error>),
+  BadTupleIndex(usize, usize), // (length, index)
 }
 
 fn check_asmt_type(expected: &bril_rs::Type, actual: &bril_rs::Type) -> Result<(), InterpError> {
@@ -46,6 +47,19 @@ fn get_values<'a>(
   Ok(vals)
 }
 
+fn get_value<'a>(
+  vars: &'a HashMap<String, Value>,
+  index: usize,
+  args: &[String],
+) -> Result<&'a Value, InterpError> {
+  if index >= args.len() {
+    return Err(InterpError::BadNumArgs(index, args.len()));
+  }
+  vars
+    .get(&args[index])
+    .ok_or_else(|| InterpError::VarNotFound(args[index].to_string()))
+}
+
 fn get_args<'a, T>(
   vars: &'a HashMap<String, Value>,
   arity: usize,
@@ -71,19 +85,50 @@ where
   Ok(arg_vals)
 }
 
+fn get_arg<'a, T>(
+  vars: &'a HashMap<String, Value>,
+  index: usize,
+  args: &[String],
+) -> Result<T, InterpError>
+where
+  T: TryFrom<&'a Value, Error = InterpError>,
+{
+  T::try_from(
+    vars
+      .get(&args[index])
+      .ok_or_else(|| InterpError::VarNotFound(args[index].clone()))?,
+  )
+}
+
 #[derive(Debug, Clone)]
 enum Value {
   Int(i64),
   Bool(bool),
   Float(f64),
+  Tuple(Tuple),
+  Enum(Enum),
+}
+
+#[derive(Debug, Clone)]
+struct Tuple {
+  values: Vec<Value>,
+}
+
+#[derive(Debug, Clone)]
+struct Enum {
+  index: i8,
+  value: Box<Value>,
+  enum_type: Vec<bril_rs::Type>,
 }
 
 impl Value {
   pub fn get_type(&self) -> bril_rs::Type {
-    match *self {
+    match self {
       Value::Int(_) => bril_rs::Type::Int,
       Value::Bool(_) => bril_rs::Type::Bool,
       Value::Float(_) => bril_rs::Type::Float,
+      Value::Tuple(v) => bril_rs::Type::Product(v.values.iter().map(|x| x.get_type()).collect()),
+      Value::Enum(e) => bril_rs::Type::Sum(e.enum_type.clone()),
     }
   }
 }
@@ -95,6 +140,16 @@ impl fmt::Display for Value {
       Int(i) => write!(f, "{}", i),
       Bool(b) => write!(f, "{}", b),
       Float(v) => write!(f, "{}", v),
+      Value::Tuple(v) => write!(
+        f,
+        "({})",
+        v.values
+          .iter()
+          .map(|x| x.to_string())
+          .collect::<Vec<String>>()
+          .join(", ")
+      ),
+      Value::Enum(e) => write!(f, "<{}; {}>", e.index, e.value),
     }
   }
 }
@@ -144,6 +199,34 @@ impl TryFrom<&Value> for f64 {
       Value::Float(f) => Ok(*f),
       _ => Err(InterpError::BadValueType(
         bril_rs::Type::Float,
+        value.get_type(),
+      )),
+    }
+  }
+}
+
+impl TryFrom<&Value> for Tuple {
+  type Error = InterpError;
+  fn try_from(value: &Value) -> Result<Self, Self::Error> {
+    match value {
+      Value::Tuple(t) => Ok(t.clone()),
+      _ => Err(InterpError::BadValueType(
+        //TODO Not sure how to get the expected type here
+        bril_rs::Type::unit(),
+        value.get_type(),
+      )),
+    }
+  }
+}
+
+impl TryFrom<&Value> for Enum {
+  type Error = InterpError;
+  fn try_from(value: &Value) -> Result<Self, Self::Error> {
+    match value {
+      Value::Enum(e) => Ok(e.clone()),
+      _ => Err(InterpError::BadValueType(
+        //TODO Not sure how to get the expected type here
+        bril_rs::Type::Sum(vec![]),
         value.get_type(),
       )),
     }
@@ -273,6 +356,35 @@ fn execute_value_op(
     }
     Call => unreachable!(), // TODO(yati): Why is Call a ValueOp as well?
     Phi | Alloc | Load | PtrAdd => unimplemented!(),
+    Pack => {
+      let tuple = Value::Tuple(Tuple {
+        values: args
+          .iter()
+          .map(|a| {
+            value_store
+              .get(a)
+              .cloned()
+              .ok_or_else(|| InterpError::VarNotFound(a.to_string()))
+          })
+          .collect::<Result<Vec<Value>, InterpError>>()?,
+      });
+      check_asmt_type(op_type, &tuple.get_type())?;
+      value_store.insert(String::from(dest), tuple);
+    }
+    Unpack => {
+      let tuple = get_arg::<Tuple>(value_store, 0, args)?;
+      let index = get_arg::<i64>(value_store, 1, args)? as usize;
+      if tuple.values.len() < index {
+        Err(InterpError::BadTupleIndex(
+          tuple.values.len(),
+          index as usize,
+        ))?
+      }
+      let result = tuple.values.get(index).unwrap();
+      check_asmt_type(op_type, &result.get_type())?;
+      value_store.insert(String::from(dest), result.clone());
+    }
+    Construct | Destruct => unimplemented!(),
   }
   Ok(())
 }
