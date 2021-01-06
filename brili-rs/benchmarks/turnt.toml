@@ -1,3 +1,3 @@
-command = "bril2json < {filename} | cargo +nightly run -- -p {args}"
+command = "bril2json < {filename} | cargo +nightly run --quiet -- -p {args}"
 output.out = "-"
 output.prof = "2"
