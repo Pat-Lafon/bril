@@ -4,4 +4,5 @@
 \* "MUL"
 \( "LBRACK"
 \) "RBRACK"
+\: "COLON"
 [\t ]+ ;

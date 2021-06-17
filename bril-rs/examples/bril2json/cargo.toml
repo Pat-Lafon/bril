@@ -5,6 +5,11 @@ authors = ["Patrick LaFontaine <32135464+Pat-Lafon@users.noreply.github.com>"]
 edition = "2018"
 license = "MIT"
 
+[build-dependencies]
+cfgrammar = "0.9"
+lrlex = "0.9"
+lrpar = "0.9"
+
 [dependencies]
 cfgrammar = "0.9"
 lrlex = "0.9"
