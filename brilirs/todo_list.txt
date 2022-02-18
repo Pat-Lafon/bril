@@ -1,6 +1,7 @@
-- Support Speculative execution in brilirs
-- Support structs in bril-rs and brilirs
-- bril-rs to LLVM compiler?
+- Support Speculative execution extension in brilirs
+- Support structs extension in bril-rs and brilirs
+- Revive some of the incomplete extensions like First-class-functions/Sum types
+- bril-rs to LLVM compiler?(See struct extension compiler)
 - Optimize brilirs:
     - replace the naive memory management support with a more optimized version
     - optimize brilirs for function calls
@@ -8,3 +9,7 @@
         - optimize contexts?
 - Improve documentation
 - Appease Clippy Overlord
+- Fuzzing with cargo-fuzz or Property testing with proptest
+- Replace benchmarking scripts with something more extensible like brench or a better python/rust script
+- Equality Saturation using the egg crate for bril-rs?
+- Formalize bril in Coq?
