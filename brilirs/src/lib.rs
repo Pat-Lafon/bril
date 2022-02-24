@@ -6,11 +6,11 @@
 
 use std::error::Error;
 
-mod basic_block;
-mod check;
+pub mod basic_block;
+pub mod check;
 pub mod cli;
-mod error;
-mod interp;
+pub mod error;
+pub mod interp;
 
 pub fn run_input<T: std::io::Write>(
   input: Box<dyn std::io::Read>,

@@ -10,6 +10,7 @@ edition = "2021"
 thiserror = "1.0"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
+arbitrary = { version = "1.1", features = ["derive"] }
 
 [features]
 float = []
@@ -17,6 +18,7 @@ memory = []
 ssa = []
 speculate = []
 position = []
+fuzzing = []
 
 [[example]]
 name = "bril2txt"

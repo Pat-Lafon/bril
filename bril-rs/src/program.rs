@@ -2,6 +2,7 @@ use std::fmt::{self, Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
+#[cfg_attr(feature = "fuzzing", derive(arbitrary::Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Program {
     pub functions: Vec<Function>,
@@ -16,6 +17,7 @@ impl Display for Program {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(arbitrary::Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Function {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -56,6 +58,7 @@ impl Display for Function {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(arbitrary::Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Argument {
     pub name: String,
@@ -69,6 +72,7 @@ impl Display for Argument {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(arbitrary::Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 pub enum Code {
@@ -94,6 +98,7 @@ impl Display for Code {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(arbitrary::Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 pub enum Instruction {
@@ -207,6 +212,7 @@ impl Display for Instruction {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(arbitrary::Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum ConstOps {
     #[serde(rename = "const")]
@@ -221,6 +227,7 @@ impl Display for ConstOps {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(arbitrary::Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum EffectOps {
@@ -268,6 +275,7 @@ impl Display for EffectOps {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(arbitrary::Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum ValueOps {
@@ -360,6 +368,7 @@ impl Display for ValueOps {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(arbitrary::Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum Type {
@@ -385,6 +394,7 @@ impl Display for Type {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(arbitrary::Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 pub enum Literal {
@@ -417,6 +427,7 @@ impl Literal {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(arbitrary::Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 pub struct Position {
     pub col: u64,
