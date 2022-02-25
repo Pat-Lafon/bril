@@ -5,7 +5,7 @@ authors = ["Patrick LaFontaine <32135464+Pat-Lafon@users.noreply.github.com>"]
 edition = "2021"
 
 [dependencies]
-afl = "0.12"
+honggfuzz = "0.5"
 arbitrary = "1.1"
 
 [dependencies.brilirs]
@@ -14,3 +14,7 @@ path = ".."
 [dependencies.bril-rs]
 path = "../../bril-rs"
 features = ["fuzzing"]
+
+[[bin]]
+name = "example"
+path = "src/main.rs"
