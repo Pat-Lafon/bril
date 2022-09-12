@@ -1,1 +1,4 @@
+src/bril_grammar.lalrpop
 src/bril_grammar.rs
+src/bril_grammar_import.lalrpop
+src/bril_grammar_import.rs

@@ -137,6 +137,13 @@ pub struct Argument {
 
 impl Display for Argument {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        #[cfg(feature = "infer")]
+        if let Type::Unknown = self.arg_type {
+            write!(f, "{}", self.name)
+        } else {
+            write!(f, "{}: {}", self.name, self.arg_type)
+        }
+        #[cfg(not(feature = "infer"))]
         write!(f, "{}: {}", self.name, self.arg_type)
     }
 }
@@ -251,6 +258,17 @@ impl Instruction {
 impl Display for Instruction {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            #[cfg(feature = "infer")]
+            Instruction::Constant {
+                op,
+                dest,
+                const_type: Type::Unknown,
+                value,
+                #[cfg(feature = "position")]
+                    pos: _,
+            } => {
+                write!(f, "{dest} = {op} {value};")
+            }
             Instruction::Constant {
                 op,
                 dest,
@@ -271,6 +289,13 @@ impl Display for Instruction {
                 #[cfg(feature = "position")]
                     pos: _,
             } => {
+                #[cfg(feature = "infer")]
+                if let Type::Unknown = op_type {
+                    write!(f, "{dest} = {op}")?;
+                } else {
+                    write!(f, "{dest}: {op_type} = {op}")?;
+                }
+                #[cfg(not(feature = "infer"))]
                 write!(f, "{dest}: {op_type} = {op}")?;
                 for func in funcs {
                     write!(f, " @{func}")?;
@@ -517,6 +542,9 @@ pub enum Type {
     #[cfg(feature = "memory")]
     #[serde(rename = "ptr")]
     Pointer(Box<Self>),
+
+    #[cfg(feature = "infer")]
+    Unknown,
 }
 
 impl Display for Type {
@@ -528,6 +556,8 @@ impl Display for Type {
             Self::Float => write!(f, "float"),
             #[cfg(feature = "memory")]
             Self::Pointer(tpe) => write!(f, "ptr<{tpe}>"),
+            #[cfg(feature = "infer")]
+            Self::Unknown => write!(f, ""),
         }
     }
 }

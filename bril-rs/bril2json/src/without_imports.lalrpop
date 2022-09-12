@@ -1,0 +1,11 @@
+Imports : () = {
+    "from" <p: Path> "import" <n:(<ImportedFunction> ","?)*> ";" => {
+        panic!("use import feature for imports")
+    }
+}
+
+ImportedFunction : () = {
+    <n:Func> <a:Alias?> => {
+        panic!("use import feature for imports")
+    }
+}

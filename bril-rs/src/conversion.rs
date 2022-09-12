@@ -313,6 +313,8 @@ impl TryFrom<AbstractType> for Type {
             AbstractType::Primitive(t) if t == "bool" => Self::Bool,
             #[cfg(feature = "float")]
             AbstractType::Primitive(t) if t == "float" => Self::Float,
+            #[cfg(feature = "infer")]
+            AbstractType::Primitive(t) if t == "" => Self::Unknown,
             AbstractType::Primitive(t) => return Err(ConversionError::InvalidPrimitive(t)),
             #[cfg(feature = "memory")]
             AbstractType::Parameterized(t, ty) if t == "ptr" => {

@@ -5,7 +5,7 @@ TESTS :=  ../test/print/*.json \
 
 .PHONY: test
 test:
-	turnt -e bril-rs $(TESTS)
+	turnt -v -e bril-rs $(TESTS)
 
 .PHONY: install
 install:
@@ -19,3 +19,4 @@ install:
 .PHONY: features
 features:
 	cargo hack check --feature-powerset --no-dev-deps
+	cargo hack check --feature-powerset --manifest-path ./bril2json/Cargo.toml

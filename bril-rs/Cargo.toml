@@ -25,6 +25,7 @@ ssa = []
 speculate = []
 position = []
 import = []
+infer = []
 
 [[example]]
 name = "bril2txt"

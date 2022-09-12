@@ -1,0 +1,18 @@
+use bril_rs::{Import, ImportedFunction};
+Imports : Import = {
+    "from" <p: Path> "import" <n:(<ImportedFunction> ","?)*> ";" => {
+        Import {
+            path: p,
+            functions: n,
+        }
+    }
+}
+
+ImportedFunction : ImportedFunction = {
+    <n:Func> <a:Alias?> => {
+        ImportedFunction {
+            name: n,
+            alias: a,
+        }
+    }
+}

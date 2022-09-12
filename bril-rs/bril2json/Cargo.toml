@@ -11,12 +11,16 @@ license-file = "../../LICENSE"
 categories = ["command-line-utilities", "compilers", "parser-implementations"]
 keywords = ["compiler", "bril", "parser", "data-structures", "language"]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+float = ["bril-rs/float"]
+position = ["bril-rs/position"]
+import = ["bril-rs/import"]
 
 [dependencies]
 clap         = { version = "3.2", features = ["derive"] }
 lalrpop-util = { version = "0.19", features = ["lexer"] }
 regex = "1.5"
+cfg-if = "1.0.0"
 
 # Add a build-time dependency on the lalrpop library:
 [build-dependencies]
@@ -25,4 +29,4 @@ lalrpop = "0.19"
 [dependencies.bril-rs]
 version = "0.1.0"
 path = "../../bril-rs"
-features = ["ssa", "memory", "float", "speculate", "position", "import"]
+features = []

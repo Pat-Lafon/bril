@@ -20,11 +20,15 @@
 #![allow(clippy::must_use_candidate)]
 #![allow(clippy::cognitive_complexity)]
 #![allow(clippy::ptr_arg)]
+#![allow(clippy::unused_unit)]
+#![allow(clippy::semicolon_if_nothing_returned)]
+#![allow(clippy::let_unit_value)]
 
 use std::str::FromStr;
 use std::path::PathBuf;
 use crate::Lines;
-use bril_rs::{AbstractProgram, AbstractFunction, AbstractArgument, AbstractCode, AbstractInstruction, ConstOps, AbstractType, Literal, Import, ImportedFunction};
+use cfg_if::cfg_if;
+use bril_rs::{AbstractProgram, AbstractFunction, AbstractArgument, AbstractCode, AbstractInstruction, ConstOps, AbstractType, Literal};
 
 grammar(lines : &Lines);
 
@@ -45,26 +49,9 @@ match {
 
 pub AbstractProgram : AbstractProgram = {
     <i: (<Imports>)*> <f :(<AbstractFunction>)*> => AbstractProgram {
+        #[cfg(feature = "import")]
         imports: i,
         functions : f,
-    }
-}
-
-Imports : Import = {
-    "from" <p: Path> "import" <n:(<ImportedFunction> ","?)*> ";" => {
-        Import {
-            path: p,
-            functions: n,
-        }
-    }
-}
-
-ImportedFunction : ImportedFunction = {
-    <n:Func> <a:Alias?> => {
-        ImportedFunction {
-            name: n,
-            alias: a,
-        }
     }
 }
 
@@ -80,6 +67,7 @@ AbstractFunction : AbstractFunction = {
         args : a,
         return_type : t,
         instrs: c,
+        #[cfg(feature = "position")]
         pos : lines.get_position(loc),
     }}
 }
@@ -100,7 +88,11 @@ AbstractArgument : AbstractArgument = {
 }
 
 AbstractCode : AbstractCode = {
-    <loc:@L> <l: Label> ":" => AbstractCode::Label{ label : l, pos : lines.get_position(loc)},
+    <loc:@L> <l: Label> ":" => AbstractCode::Label{
+                                    label : l,
+                                    #[cfg(feature = "position")]
+                                    pos : lines.get_position(loc)
+                                },
     <i: AbstractInstruction> => AbstractCode::Instruction(i),
 }
 
@@ -110,6 +102,7 @@ AbstractInstruction : AbstractInstruction = {
         dest : i,
         const_type : t,
         value : l,
+        #[cfg(feature = "position")]
         pos : lines.get_position(loc),
     },
     <loc:@L> <i:Ident> <t:(":" <AbstractType>)?> "=" <v:Ident> <f :(<Args>)*> ";" => {
@@ -130,6 +123,7 @@ AbstractInstruction : AbstractInstruction = {
             args: a_vec,
             funcs: f_vec,
             labels: l_vec,
+            #[cfg(feature = "position")]
             pos : lines.get_position(loc),
         }
     },
@@ -149,6 +143,7 @@ AbstractInstruction : AbstractInstruction = {
             args: a_vec,
             funcs: f_vec,
             labels: l_vec,
+            #[cfg(feature = "position")]
             pos : lines.get_position(loc),
         }
     }
@@ -194,7 +189,14 @@ Label: String = {
 Literal: Literal = {
     <n: Num> => Literal::Int(n),
     <b: Bool> => Literal::Bool(b),
-    <f: Float> => Literal::Float(f),
+    <f: Float> =>
+                cfg_if! {
+                    if #[cfg(feature = "float")] {
+                        Literal::Float(f)
+                    } else {
+                        panic!("please enable the `float` feature")
+                    }
+                }
 }
 
 Num: i64 = <s:r"(\+|-)?[0-9]+"> => i64::from_str(s).unwrap();

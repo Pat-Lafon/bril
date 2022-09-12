@@ -3,15 +3,26 @@
 #![doc = include_str!("../README.md")]
 
 // Tell the github workflow check to not format the generated rust program bril_grammar.rs
+#[cfg(not(feature = "import"))]
 #[doc(hidden)]
 #[rustfmt::skip]
 pub mod bril_grammar;
+
+#[cfg(feature = "import")]
+#[doc(hidden)]
+#[rustfmt::skip]
+pub mod bril_grammar_import;
+
 #[doc(hidden)]
 pub mod cli;
-use bril_rs::{AbstractProgram, Position};
+use bril_rs::AbstractProgram;
+
+#[cfg(feature = "position")]
+use bril_rs::Position;
 
 #[doc(hidden)]
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct Lines {
     use_pos: bool,
     new_lines: Vec<usize>,
@@ -30,6 +41,7 @@ impl Lines {
         }
     }
 
+    #[cfg(feature = "position")]
     fn get_position(&self, index: usize) -> Option<Position> {
         if self.use_pos {
             Some(
@@ -69,6 +81,10 @@ pub fn parse_abstract_program_from_read<R: std::io::Read>(
 ) -> AbstractProgram {
     let mut buffer = String::new();
     input.read_to_string(&mut buffer).unwrap();
+    #[cfg(feature = "import")]
+    let parser = bril_grammar_import::AbstractProgramParser::new();
+
+    #[cfg(not(feature = "import"))]
     let parser = bril_grammar::AbstractProgramParser::new();
     parser
         .parse(&Lines::new(&buffer, use_pos), &buffer)
