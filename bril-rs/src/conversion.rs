@@ -1,17 +1,30 @@
-use std::fmt::Display;
-
 use crate::{
     AbstractArgument, AbstractCode, AbstractFunction, AbstractInstruction, AbstractProgram,
-    AbstractType, Argument, Code, EffectOps, Function, Instruction, Position, Program, Type,
-    ValueOps,
+    AbstractType, Argument, Code, EffectOps, Function, Instruction, Program, Type, ValueOps,
 };
 
+use cfg_if::cfg_if;
 use thiserror::Error;
 
-// This is a nifty trick to supply a global value for pos when it is not defined
-#[cfg(not(feature = "position"))]
-#[allow(non_upper_case_globals)]
-const pos: Option<Position> = None;
+cfg_if! {
+    if #[cfg(feature = "position")] {
+        use crate::positional::{PositionalError, PositionalErrorTrait};
+        type Error = PositionalError<ConversionError>;
+        impl PositionalErrorTrait<ConversionError> for ConversionError {}
+    } else {
+        #[allow(non_upper_case_globals)]
+        // This is a nifty trick to supply a global value for pos when it is not defined
+        const pos: Option<()> = None;
+        type Error = ConversionError;
+        impl ConversionError {
+            /// This gets compiled away as a nop place holder for the `PostionalError` version when not using the "position" features
+            #[must_use]
+            pub const fn add_pos(self, _: Option<()>) -> ConversionError {
+                self
+            }
+        }
+    }
+}
 
 /// This is the [`std::error::Error`] implementation for `bril_rs`. This crate currently only supports errors from converting between [`AbstractProgram`] and [Program]
 // todo Should this also wrap Serde errors? In this case, maybe change the name from ConversionError
@@ -40,52 +53,9 @@ pub enum ConversionError {
     MissingType,
 }
 
-impl ConversionError {
-    #[doc(hidden)]
-    #[must_use]
-    pub const fn add_pos(self, pos_var: Option<Position>) -> PositionalConversionError {
-        PositionalConversionError {
-            e: self,
-            pos: pos_var,
-        }
-    }
-}
-
-/// Wraps [`ConversionError`] to optionally provide source code positions if they are available.
-#[derive(Error, Debug)]
-pub struct PositionalConversionError {
-    #[doc(hidden)]
-    pub e: ConversionError,
-    #[doc(hidden)]
-    pub pos: Option<Position>,
-}
-
-impl PositionalConversionError {
-    #[doc(hidden)]
-    #[must_use]
-    pub const fn new(e: ConversionError) -> Self {
-        Self { e, pos: None }
-    }
-}
-
-impl Display for PositionalConversionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            #[cfg(feature = "position")]
-            PositionalConversionError { e, pos: Some(pos) } => {
-                write!(f, "Line {}, Column {}: {e}", pos.row, pos.col)
-            }
-            #[cfg(not(feature = "position"))]
-            PositionalConversionError { e: _, pos: Some(_) } => {
-                unreachable!()
-            }
-            PositionalConversionError { e, pos: None } => write!(f, "{e}"),
-        }
-    }
-}
-
 impl TryFrom<AbstractProgram> for Program {
-    type Error = PositionalConversionError;
+    type Error = Error;
+
     fn try_from(
         AbstractProgram {
             #[cfg(feature = "import")]
@@ -105,7 +75,7 @@ impl TryFrom<AbstractProgram> for Program {
 }
 
 impl TryFrom<AbstractFunction> for Function {
-    type Error = PositionalConversionError;
+    type Error = Error;
     fn try_from(
         AbstractFunction {
             args,
@@ -150,7 +120,7 @@ impl TryFrom<AbstractArgument> for Argument {
 }
 
 impl TryFrom<AbstractCode> for Code {
-    type Error = PositionalConversionError;
+    type Error = Error;
     fn try_from(c: AbstractCode) -> Result<Self, Self::Error> {
         Ok(match c {
             AbstractCode::Label {
@@ -168,7 +138,7 @@ impl TryFrom<AbstractCode> for Code {
 }
 
 impl TryFrom<AbstractInstruction> for Instruction {
-    type Error = PositionalConversionError;
+    type Error = Error;
     fn try_from(i: AbstractInstruction) -> Result<Self, Self::Error> {
         Ok(match i {
             AbstractInstruction::Constant {
@@ -300,6 +270,11 @@ impl TryFrom<Option<AbstractType>> for Type {
     fn try_from(value: Option<AbstractType>) -> Result<Self, Self::Error> {
         match value {
             Some(t) => t.try_into(),
+
+            #[cfg(feature = "infer")]
+            None => Ok(Type::Unknown),
+
+            #[cfg(not(feature = "infer"))]
             None => Err(ConversionError::MissingType),
         }
     }
@@ -314,7 +289,7 @@ impl TryFrom<AbstractType> for Type {
             #[cfg(feature = "float")]
             AbstractType::Primitive(t) if t == "float" => Self::Float,
             #[cfg(feature = "infer")]
-            AbstractType::Primitive(t) if t == "" => Self::Unknown,
+            AbstractType::Primitive(t) if t.is_empty() => Self::Unknown,
             AbstractType::Primitive(t) => return Err(ConversionError::InvalidPrimitive(t)),
             #[cfg(feature = "memory")]
             AbstractType::Parameterized(t, ty) if t == "ptr" => {

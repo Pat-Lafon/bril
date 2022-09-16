@@ -18,7 +18,7 @@ pub mod cli;
 use bril_rs::AbstractProgram;
 
 #[cfg(feature = "position")]
-use bril_rs::Position;
+use bril_rs::positional::Position;
 
 #[doc(hidden)]
 #[derive(Clone)]

@@ -1,0 +1,32 @@
+[package]
+name = "brilwf"
+version = "0.1.0"
+authors = ["Patrick LaFontaine <32135464+Pat-Lafon@users.noreply.github.com>"]
+edition = "2021"
+description = "A well-formedness/typechecker for Bril"
+readme = "README.md"
+repository = "https://github.com/sampsyo/bril"
+# license = "MIT"
+license-file = "../../LICENSE"
+categories = ["command-line-utilities", "compilers"]
+keywords = ["compiler", "bril", "parser", "data-structures", "language"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+thiserror = "1.0.35"
+fxhash = "0.2.1"
+cfg-if = "1.0.0"
+
+[features]
+ssa = ["bril-rs/ssa"]
+speculate = ["bril-rs/speculate"]
+memory = ["bril-rs/memory"]
+float = ["bril-rs/float"]
+position = ["bril-rs/position"]
+import = ["bril-rs/import"]
+
+[dependencies.bril-rs]
+version = "0.1.0"
+path = "../../bril-rs"
+features = []

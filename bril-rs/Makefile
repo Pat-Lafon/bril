@@ -20,3 +20,4 @@ install:
 features:
 	cargo hack check --feature-powerset --no-dev-deps
 	cargo hack check --feature-powerset --manifest-path ./bril2json/Cargo.toml
+	cargo hack check --feature-powerset --manifest-path ./brilwf/Cargo.toml

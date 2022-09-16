@@ -7,13 +7,11 @@
 #![doc = include_str!("../README.md")]
 
 use basic_block::BBProgram;
-use bril_rs::Program;
-use error::PositionalInterpError;
+use bril_rs::{positional::PositionalError, Program};
+use error::InterpError;
 
 /// The internal representation of brilirs, provided a ```TryFrom<Program>``` conversion
 pub mod basic_block;
-/// Provides ```check::type_check``` to validate [Program]
-pub mod check;
 #[doc(hidden)]
 pub mod cli;
 #[doc(hidden)]
@@ -30,17 +28,17 @@ pub fn run_input<T: std::io::Write, U: std::io::Write>(
   profiling_out: U,
   check: bool,
   text: bool,
-) -> Result<(), PositionalInterpError> {
+) -> Result<(), PositionalError<InterpError>> {
   // It's a little confusing because of the naming conventions.
   //      - bril_rs takes file.json as input
   //      - bril2json takes file.bril as input
   let prog: Program = if text {
-    bril2json::parse_abstract_program_from_read(input, true).try_into()?
+    PositionalError::convert(bril2json::parse_abstract_program_from_read(input, true).try_into())?
   } else {
-    bril_rs::load_abstract_program_from_read(input).try_into()?
+    PositionalError::convert(bril_rs::load_abstract_program_from_read(input).try_into())?
   };
+  PositionalError::convert(brilwf::type_check(&prog))?;
   let bbprog: BBProgram = prog.try_into()?;
-  check::type_check(&bbprog)?;
 
   if !check {
     interp::execute_main(&bbprog, out, input_args, profiling, profiling_out)?;

@@ -1,7 +1,10 @@
-use bril_rs::{Function, Instruction, Position, Program};
+use bril_rs::{
+  positional::{Position, PositionalError, PositionalErrorTrait},
+  Function, Instruction, Program,
+};
 use fxhash::FxHashMap;
 
-use crate::error::{InterpError, PositionalInterpError};
+use crate::error::InterpError;
 
 /// A program represented as basic blocks. This is the IR of brilirs
 #[derive(Debug)]
@@ -13,7 +16,7 @@ pub struct BBProgram {
 }
 
 impl TryFrom<Program> for BBProgram {
-  type Error = InterpError;
+  type Error = PositionalError<InterpError>;
 
   fn try_from(prog: Program) -> Result<Self, Self::Error> {
     Self::new(prog)
@@ -25,7 +28,7 @@ impl BBProgram {
   /// # Errors
   /// Will return an error if the program is invalid in some way.
   /// Reasons include the `Program` have multiple functions with the same name, a function name is not found, or a label is expected by an instruction but missing.
-  pub fn new(prog: Program) -> Result<Self, InterpError> {
+  pub fn new(prog: Program) -> Result<Self, PositionalError<InterpError>> {
     let num_funcs = prog.functions.len();
 
     let func_map: FxHashMap<String, usize> = prog
@@ -39,7 +42,7 @@ impl BBProgram {
       .functions
       .into_iter()
       .map(|func| BBFunction::new(func, &func_map))
-      .collect::<Result<Vec<BBFunction>, InterpError>>()?;
+      .collect::<Result<Vec<BBFunction>, PositionalError<InterpError>>>()?;
 
     let bb = Self {
       index_of_main: func_map.get(&"main".to_string()).copied(),
@@ -48,7 +51,7 @@ impl BBProgram {
     if func_map.len() == num_funcs {
       Ok(bb)
     } else {
-      Err(InterpError::DuplicateFunction)
+      Err(InterpError::DuplicateFunction.no_pos())?
     }
   }
 
@@ -117,7 +120,7 @@ impl NumifiedInstruction {
     num_var_map: &mut FxHashMap<String, usize>,
     // A map from function names to numbers
     func_map: &FxHashMap<String, usize>,
-  ) -> Result<Self, PositionalInterpError> {
+  ) -> Result<Self, PositionalError<InterpError>> {
     Ok(match instr {
       Instruction::Constant { dest, .. } => Self {
         dest: Some(get_num_from_map(dest, num_of_vars, num_var_map)),
@@ -144,7 +147,7 @@ impl NumifiedInstruction {
               .copied()
               .ok_or_else(|| InterpError::FuncNotFound(f.to_string()).add_pos(*pos))
           })
-          .collect::<Result<Vec<usize>, PositionalInterpError>>()?,
+          .collect::<Result<Vec<usize>, PositionalError<InterpError>>>()?,
       },
       Instruction::Effect {
         args, funcs, pos, ..
@@ -162,7 +165,7 @@ impl NumifiedInstruction {
               .copied()
               .ok_or_else(|| InterpError::FuncNotFound(f.to_string()).add_pos(*pos))
           })
-          .collect::<Result<Vec<usize>, PositionalInterpError>>()?,
+          .collect::<Result<Vec<usize>, PositionalError<InterpError>>>()?,
       },
     })
   }
@@ -184,16 +187,21 @@ pub struct BBFunction {
 }
 
 impl BBFunction {
-  fn new(f: Function, func_map: &FxHashMap<String, usize>) -> Result<Self, InterpError> {
+  fn new(
+    f: Function,
+    func_map: &FxHashMap<String, usize>,
+  ) -> Result<Self, PositionalError<InterpError>> {
     let (mut func, label_map) = Self::find_basic_blocks(f, func_map)?;
-    func.build_cfg(&label_map)?;
+    func
+      .build_cfg(&label_map)
+      .map_err(PositionalErrorTrait::no_pos)?;
     Ok(func)
   }
 
   fn find_basic_blocks(
     func: bril_rs::Function,
     func_map: &FxHashMap<String, usize>,
-  ) -> Result<(Self, FxHashMap<String, usize>), PositionalInterpError> {
+  ) -> Result<(Self, FxHashMap<String, usize>), PositionalError<InterpError>> {
     let mut blocks = Vec::new();
     let mut label_map = FxHashMap::default();
 

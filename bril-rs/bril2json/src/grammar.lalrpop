@@ -81,7 +81,7 @@ Argument_List : Vec<AbstractArgument> = {
 }
 
 AbstractArgument : AbstractArgument = {
-   <i:Ident> ":" <t: AbstractType> => AbstractArgument {
+   <i:Ident> <t:OutputType?> => AbstractArgument {
         name : i,
         arg_type : t,
     }

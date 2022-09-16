@@ -1,5 +1,5 @@
 use brilirs::cli::Cli;
-use brilirs::error::PositionalInterpError;
+use bril_rs::positional::PositionalError;
 use clap::Parser;
 use std::fs::File;
 use std::io::Read;
@@ -50,7 +50,7 @@ fn main() {
 
     if let (
       Some(f),
-      PositionalInterpError {
+      PositionalError {
         e: _,
         pos: Some(pos),
       },

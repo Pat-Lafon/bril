@@ -4,7 +4,7 @@ use std::marker::PhantomData;
 use crate::{program::Literal, ConstOps};
 
 #[cfg(feature = "position")]
-use crate::program::Position;
+use crate::positional::Position;
 
 #[cfg(feature = "import")]
 use crate::program::Import;
@@ -90,12 +90,16 @@ pub struct AbstractArgument {
     pub name: String,
     /// int
     #[serde(rename = "type")]
-    pub arg_type: AbstractType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arg_type: Option<AbstractType>,
 }
 
 impl Display for AbstractArgument {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.name, self.arg_type)
+        match &self.arg_type {
+            Some(t) => write!(f, "{}: {t}", self.name),
+            None => write!(f, "{}", self.name),
+        }
     }
 }
 
@@ -146,6 +150,7 @@ pub enum AbstractInstruction {
         pos: Option<Position>,
         /// Type of variable
         #[serde(rename = "type")]
+        #[serde(skip_serializing_if = "Option::is_none")]
         const_type: Option<AbstractType>,
         /// The literal being stored in the variable
         value: Literal,
@@ -171,6 +176,7 @@ pub enum AbstractInstruction {
         pos: Option<Position>,
         /// Type of variable
         #[serde(rename = "type")]
+        #[serde(skip_serializing_if = "Option::is_none")]
         op_type: Option<AbstractType>,
     },
     /// <https://capra.cs.cornell.edu/bril/lang/syntax.html#effect-operation>

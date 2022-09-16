@@ -4,13 +4,19 @@
 #![allow(clippy::too_many_lines)]
 // https://github.com/rust-lang/rust-clippy/issues/6902
 #![allow(clippy::use_self)]
+#![allow(clippy::module_name_repetitions)]
+#![allow(clippy::derive_partial_eq_without_eq)]
 
 /// Provides the unstructured representation of Bril programs
 pub mod abstract_program;
 /// Provides the Error handling and conversion between [`AbstractProgram`] and [Program]
 pub mod conversion;
+/// Provides a the support for positions
+#[cfg(feature = "position")]
+pub mod positional;
 /// Provides the structured representation of Bril programs
 pub mod program;
+
 pub use abstract_program::*;
 pub use program::*;
 

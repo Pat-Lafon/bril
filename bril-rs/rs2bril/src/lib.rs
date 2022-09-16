@@ -8,7 +8,7 @@
 pub mod cli;
 
 use bril_rs::{
-    Argument, Code, ConstOps, EffectOps, Function, Instruction, Literal, Position, Program, Type,
+    Argument, Code, ConstOps, EffectOps, Function, Instruction, Literal, positional::Position, Program, Type,
     ValueOps,
 };
 

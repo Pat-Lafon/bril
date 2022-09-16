@@ -1,6 +1,8 @@
 use crate::basic_block::{BBFunction, BBProgram, BasicBlock};
-use crate::error::{InterpError, PositionalInterpError};
+use crate::error::InterpError;
 use bril_rs::Instruction;
+
+use bril_rs::positional::{PositionalError, PositionalErrorTrait};
 
 use fxhash::FxHashMap;
 
@@ -303,7 +305,7 @@ fn execute_value_op<'a, T: std::io::Write>(
   labels: &[String],
   funcs: &[usize],
   last_label: Option<&String>,
-) -> Result<(), InterpError> {
+) -> Result<(), PositionalError<InterpError>> {
   use bril_rs::ValueOps::{
     Add, Alloc, And, Call, Div, Eq, Fadd, Fdiv, Feq, Fge, Fgt, Fle, Flt, Fmul, Fsub, Ge, Gt, Id,
     Le, Load, Lt, Mul, Not, Or, Phi, PtrAdd, Sub,
@@ -328,7 +330,7 @@ fn execute_value_op<'a, T: std::io::Write>(
       let arg0 = get_arg::<i64>(&state.env, 0, args);
       let arg1 = get_arg::<i64>(&state.env, 1, args);
       if arg1 == 0 {
-        return Err(InterpError::DivisionByZero);
+        Err(InterpError::DivisionByZero.no_pos())?;
       }
       state.env.set(dest, Value::Int(arg0.wrapping_div(arg1)));
     }
@@ -432,24 +434,30 @@ fn execute_value_op<'a, T: std::io::Write>(
       state.env.set(dest, result);
     }
     Phi => match last_label {
-      None => return Err(InterpError::NoLastLabel),
+      None => Err(InterpError::NoLastLabel.no_pos())?,
       Some(last_label) => {
         let arg = labels
           .iter()
           .position(|l| l == last_label)
-          .ok_or_else(|| InterpError::PhiMissingLabel(last_label.to_string()))
+          .ok_or_else(|| InterpError::PhiMissingLabel(last_label.to_string()).no_pos())
           .map(|i| get_arg::<Value>(&state.env, i, args))?;
         state.env.set(dest, arg);
       }
     },
     Alloc => {
       let arg0 = get_arg::<i64>(&state.env, 0, args);
-      let res = state.heap.alloc(arg0)?;
+      let res = state
+        .heap
+        .alloc(arg0)
+        .map_err(PositionalErrorTrait::no_pos)?;
       state.env.set(dest, res);
     }
     Load => {
       let arg0 = get_arg::<&Pointer>(&state.env, 0, args);
-      let res = state.heap.read(arg0)?;
+      let res = state
+        .heap
+        .read(arg0)
+        .map_err(PositionalErrorTrait::no_pos)?;
       state.env.set(dest, *res);
     }
     PtrAdd => {
@@ -471,7 +479,7 @@ fn execute_effect_op<'a, T: std::io::Write>(
   // There are two output variables where values are stored to effect the loop execution.
   next_block_idx: &mut Option<usize>,
   result: &mut Option<Value>,
-) -> Result<(), InterpError> {
+) -> Result<(), PositionalError<InterpError>> {
   use bril_rs::EffectOps::{
     Branch, Call, Commit, Free, Guard, Jump, Nop, Print, Return, Speculate, Store,
   };
@@ -493,7 +501,7 @@ fn execute_effect_op<'a, T: std::io::Write>(
       // In the typical case, users only print out one value at a time
       // So we can usually avoid extra allocations by providing that string directly
       if args.len() == 1 {
-        optimized_val_output(&mut state.out, state.env.get(args.get(0).unwrap()))?;
+        optimized_val_output(&mut state.out, state.env.get(args.first().unwrap()))?;
         // Add new line
         state.out.write_all(&[b'\n'])?;
       } else {
@@ -520,11 +528,17 @@ fn execute_effect_op<'a, T: std::io::Write>(
     Store => {
       let arg0 = get_arg::<&Pointer>(&state.env, 0, args);
       let arg1 = get_arg::<Value>(&state.env, 1, args);
-      state.heap.write(arg0, arg1)?;
+      state
+        .heap
+        .write(arg0, arg1)
+        .map_err(PositionalErrorTrait::no_pos)?;
     }
     Free => {
       let arg0 = get_arg::<&Pointer>(&state.env, 0, args);
-      state.heap.free(arg0)?;
+      state
+        .heap
+        .free(arg0)
+        .map_err(PositionalErrorTrait::no_pos)?;
     }
     Speculate | Commit | Guard => unimplemented!(),
   }
@@ -534,7 +548,7 @@ fn execute_effect_op<'a, T: std::io::Write>(
 fn execute<'a, T: std::io::Write>(
   state: &mut State<'a, T>,
   func: &'a BBFunction,
-) -> Result<Option<Value>, PositionalInterpError> {
+) -> Result<Option<Value>, PositionalError<InterpError>> {
   let mut last_label;
   let mut current_label = None;
   let mut curr_block_idx = 0;
@@ -724,11 +738,11 @@ pub fn execute_main<T: std::io::Write, U: std::io::Write>(
   input_args: &[String],
   profiling: bool,
   mut profiling_out: U,
-) -> Result<(), PositionalInterpError> {
+) -> Result<(), PositionalError<InterpError>> {
   let main_func = prog
     .index_of_main
     .map(|i| prog.get(i).unwrap())
-    .ok_or(InterpError::NoMainFunction)?;
+    .ok_or_else(|| InterpError::NoMainFunction.no_pos())?;
 
   if main_func.return_type.is_some() {
     return Err(InterpError::NonEmptyRetForFunc(main_func.name.clone()))
@@ -749,14 +763,14 @@ pub fn execute_main<T: std::io::Write, U: std::io::Write>(
     return Err(InterpError::MemLeak).map_err(|e| e.add_pos(main_func.pos));
   }
 
-  state.out.flush().map_err(InterpError::IoError)?;
+  state.out.flush().map_err(PositionalError::from)?;
 
   if profiling {
     writeln!(profiling_out, "total_dyn_inst: {}", state.instruction_count)
       // We call flush here in case `profiling_out` is a https://doc.rust-lang.org/std/io/struct.BufWriter.html
       // Otherwise we would expect this flush to be a nop.
       .and_then(|_| profiling_out.flush())
-      .map_err(InterpError::IoError)?;
+      .map_err(PositionalError::from)?;
   }
 
   Ok(())

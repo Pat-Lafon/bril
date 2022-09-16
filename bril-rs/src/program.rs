@@ -2,6 +2,9 @@ use std::fmt::{self, Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "position")]
+use crate::positional::Position;
+
 /// Equivalent to a file of bril code
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Program {
@@ -138,7 +141,7 @@ pub struct Argument {
 impl Display for Argument {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         #[cfg(feature = "infer")]
-        if let Type::Unknown = self.arg_type {
+        if Type::Unknown == self.arg_type {
             write!(f, "{}", self.name)
         } else {
             write!(f, "{}: {}", self.name, self.arg_type)
@@ -543,6 +546,7 @@ pub enum Type {
     #[serde(rename = "ptr")]
     Pointer(Box<Self>),
 
+    /// <https://capra.cs.cornell.edu/bril/tools/infer.html>
     #[cfg(feature = "infer")]
     Unknown,
 }
@@ -557,7 +561,7 @@ impl Display for Type {
             #[cfg(feature = "memory")]
             Self::Pointer(tpe) => write!(f, "ptr<{tpe}>"),
             #[cfg(feature = "infer")]
-            Self::Unknown => write!(f, ""),
+            Self::Unknown => write!(f, "unknown"),
         }
     }
 }
@@ -597,13 +601,4 @@ impl Literal {
             Literal::Float(_) => Type::Float,
         }
     }
-}
-
-/// <https://capra.cs.cornell.edu/bril/lang/syntax.html#source-positions>
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
-pub struct Position {
-    /// Column
-    pub col: u64,
-    /// Row
-    pub row: u64,
 }
