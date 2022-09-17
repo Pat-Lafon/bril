@@ -33,11 +33,17 @@ impl<E: Error + From<std::io::Error>> From<std::io::Error> for PositionalError<E
 
 impl<E: Error> PositionalError<E> {
     /// My fake From/Into Trait
+    /// # Errors
+    /// If previous `Result` was an error then the output will be aswell
     pub fn convert<T, E2: Error + From<E>>(r: Result<T, Self>) -> Result<T, PositionalError<E2>> {
         r.map_err(|PositionalError { e, pos }| PositionalError { e: e.into(), pos })
     }
 
     /// Add position information is None is currently available
+    #[must_use]
+    // https://github.com/rust-lang/rust-clippy/issues/8874
+    // https://github.com/rust-lang/rust/issues/73255
+    #[allow(clippy::missing_const_for_fn)]
     pub fn add_pos(self, pos: Option<Position>) -> Self {
         match self {
             PositionalError { e, pos: None } => PositionalError { e, pos },

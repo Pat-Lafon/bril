@@ -37,7 +37,7 @@ pub fn run_input<T: std::io::Write, U: std::io::Write>(
   } else {
     PositionalError::convert(bril_rs::load_abstract_program_from_read(input).try_into())?
   };
-  PositionalError::convert(brilwf::type_check(&prog))?;
+  PositionalError::convert(brilwf::check::type_check(&prog))?;
   let bbprog: BBProgram = prog.try_into()?;
 
   if !check {

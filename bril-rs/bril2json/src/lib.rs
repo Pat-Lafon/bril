@@ -22,7 +22,7 @@ use bril_rs::positional::Position;
 
 #[doc(hidden)]
 #[derive(Clone)]
-#[allow(dead_code)]
+#[cfg_attr(not(feature = "position"), allow(dead_code))]
 pub struct Lines {
     use_pos: bool,
     new_lines: Vec<usize>,

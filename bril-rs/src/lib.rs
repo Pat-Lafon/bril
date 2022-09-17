@@ -3,6 +3,7 @@
 #![doc = include_str!("../README.md")]
 #![allow(clippy::too_many_lines)]
 // https://github.com/rust-lang/rust-clippy/issues/6902
+// FIXED WHEN NEXT RELEASE COMES OUT
 #![allow(clippy::use_self)]
 #![allow(clippy::module_name_repetitions)]
 #![allow(clippy::derive_partial_eq_without_eq)]
