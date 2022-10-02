@@ -14,9 +14,9 @@ keywords = ["compiler", "bril", "parser", "data-structures", "language"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-thiserror = "1.0.35"
-fxhash = "0.2.1"
-cfg-if = "1.0.0"
+thiserror = "1.0"
+fxhash = "0.2"
+cfg-if = "1.0"
 
 [features]
 ssa = ["bril-rs/ssa"]
@@ -24,9 +24,8 @@ speculate = ["bril-rs/speculate"]
 memory = ["bril-rs/memory"]
 float = ["bril-rs/float"]
 position = ["bril-rs/position"]
-import = ["bril-rs/import"]
+infer = ["bril-rs/infer"]
 
 [dependencies.bril-rs]
 version = "0.1.0"
 path = "../../bril-rs"
-features = []

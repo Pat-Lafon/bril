@@ -18,6 +18,8 @@ pub mod positional;
 /// Provides the structured representation of Bril programs
 pub mod program;
 
+/* pub mod types; */
+
 pub use abstract_program::*;
 pub use program::*;
 

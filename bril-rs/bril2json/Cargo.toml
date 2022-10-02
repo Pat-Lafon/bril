@@ -15,9 +15,10 @@ keywords = ["compiler", "bril", "parser", "data-structures", "language"]
 float = ["bril-rs/float"]
 position = ["bril-rs/position"]
 import = ["bril-rs/import"]
+infer = ["bril-rs/infer"]
 
 [dependencies]
-clap         = { version = "3.2", features = ["derive"] }
+clap         = { version = "4.0", features = ["derive"] }
 lalrpop-util = { version = "0.19", features = ["lexer"] }
 regex = "1.5"
 cfg-if = "1.0.0"

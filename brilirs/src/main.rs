@@ -1,5 +1,5 @@
-use brilirs::cli::Cli;
 use bril_rs::positional::PositionalError;
+use brilirs::cli::Cli;
 use clap::Parser;
 use std::fs::File;
 use std::io::Read;
