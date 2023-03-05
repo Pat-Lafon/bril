@@ -1,0 +1,1165 @@
+[
+  {
+    "type": "Alias",
+    "named": true,
+    "fields": {
+      "_a": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Alias__a",
+            "named": true
+          }
+        ]
+      },
+      "alias": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Func",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "Args",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "Args_Func",
+          "named": true
+        },
+        {
+          "type": "Args_Ident",
+          "named": true
+        },
+        {
+          "type": "Args_Label",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "Args_Func",
+    "named": true,
+    "fields": {
+      "0": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Func",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "Args_Ident",
+    "named": true,
+    "fields": {
+      "0": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Ident",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "Args_Label",
+    "named": true,
+    "fields": {
+      "0": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Label",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "Comment",
+    "named": true,
+    "fields": {
+      "_comment": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Comment__comment",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "Func",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Func_name",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "Ident",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Ident_name",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "Label",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Label_name",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ParserArgument",
+    "named": true,
+    "fields": {
+      "_c": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserArgument__c",
+            "named": true
+          }
+        ]
+      },
+      "arg_type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserType",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Ident",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ParserArgumentList",
+    "named": true,
+    "fields": {
+      "_l": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserArgumentList__l",
+            "named": true
+          }
+        ]
+      },
+      "_r": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserArgumentList__r",
+            "named": true
+          }
+        ]
+      },
+      "args": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ParserArgumentList_args_vec_contents",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ParserArgumentList_args_vec_contents",
+    "named": true,
+    "fields": {
+      "ParserArgumentList_args_vec_element": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserArgument",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "ParserArgumentList_args_vec_delimiter",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ParserArgumentList_args_vec_delimiter",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "ParserArgument__c",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "ParserCode",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "ParserCode_Instruction",
+          "named": true
+        },
+        {
+          "type": "ParserCode_Label",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ParserCode_Instruction",
+    "named": true,
+    "fields": {
+      "0": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserInstruction",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ParserCode_Label",
+    "named": true,
+    "fields": {
+      "0": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Label",
+            "named": true
+          }
+        ]
+      },
+      "1": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserCode_Label_1",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ParserCode_Label_1",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "ParserConstOps",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "ParserConstOps_Const",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ParserConstOps_Const",
+    "named": true,
+    "fields": {
+      "0": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserConstOps_Const_0",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ParserFunction",
+    "named": true,
+    "fields": {
+      "_l": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserFunction__l",
+            "named": true
+          }
+        ]
+      },
+      "_r": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserFunction__r",
+            "named": true
+          }
+        ]
+      },
+      "args": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ParserArgumentList",
+            "named": true
+          }
+        ]
+      },
+      "code": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ParserFunction_code_vec_contents",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Func",
+            "named": true
+          }
+        ]
+      },
+      "ty": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ParserOutputType",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ParserFunction_code_vec_contents",
+    "named": true,
+    "fields": {
+      "ParserFunction_code_vec_element": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserCode",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ParserImport",
+    "named": true,
+    "fields": {
+      "_e": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserImport__e",
+            "named": true
+          }
+        ]
+      },
+      "_s": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserImport__s",
+            "named": true
+          }
+        ]
+      },
+      "_t": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserImport__t",
+            "named": true
+          }
+        ]
+      },
+      "functions": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ParserImport_functions_vec_contents",
+            "named": true
+          }
+        ]
+      },
+      "path": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserImport_path",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ParserImport__e",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "ParserImport_functions_vec_contents",
+    "named": true,
+    "fields": {
+      "ParserImport_functions_vec_element": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserImportedFunction",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "ParserImport_functions_vec_delimiter",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ParserImport_functions_vec_delimiter",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "ParserImportedFunction",
+    "named": true,
+    "fields": {
+      "alias": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Alias",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Func",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ParserInstruction",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "ParserInstruction_Constant",
+          "named": true
+        },
+        {
+          "type": "ParserInstruction_Effect",
+          "named": true
+        },
+        {
+          "type": "ParserInstruction_Value",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ParserInstruction_Constant",
+    "named": true,
+    "fields": {
+      "0": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Ident",
+            "named": true
+          }
+        ]
+      },
+      "1": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ParserOutputType",
+            "named": true
+          }
+        ]
+      },
+      "2": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserInstruction_Constant_2",
+            "named": true
+          }
+        ]
+      },
+      "3": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserConstOps",
+            "named": true
+          }
+        ]
+      },
+      "4": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserLiteral",
+            "named": true
+          }
+        ]
+      },
+      "5": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserInstruction_Constant_5",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ParserInstruction_Constant_2",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "ParserInstruction_Constant_5",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "ParserInstruction_Effect",
+    "named": true,
+    "fields": {
+      "0": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Ident",
+            "named": true
+          }
+        ]
+      },
+      "1": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ParserInstruction_Effect_1_vec_contents",
+            "named": true
+          }
+        ]
+      },
+      "2": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserInstruction_Effect_2",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ParserInstruction_Effect_1_vec_contents",
+    "named": true,
+    "fields": {
+      "ParserInstruction_Effect_1_vec_element": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "Args",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ParserInstruction_Effect_2",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "ParserInstruction_Value",
+    "named": true,
+    "fields": {
+      "0": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Ident",
+            "named": true
+          }
+        ]
+      },
+      "1": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ParserOutputType",
+            "named": true
+          }
+        ]
+      },
+      "2": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserInstruction_Value_2",
+            "named": true
+          }
+        ]
+      },
+      "3": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Ident",
+            "named": true
+          }
+        ]
+      },
+      "4": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ParserInstruction_Value_4_vec_contents",
+            "named": true
+          }
+        ]
+      },
+      "5": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserInstruction_Value_5",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ParserInstruction_Value_2",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "ParserInstruction_Value_4_vec_contents",
+    "named": true,
+    "fields": {
+      "ParserInstruction_Value_4_vec_element": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "Args",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ParserInstruction_Value_5",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "ParserLiteral",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "ParserLiteral_Bool",
+          "named": true
+        },
+        {
+          "type": "ParserLiteral_Float",
+          "named": true
+        },
+        {
+          "type": "ParserLiteral_Int",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ParserLiteral_Bool",
+    "named": true,
+    "fields": {
+      "0": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserLiteral_Bool_0",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ParserLiteral_Float",
+    "named": true,
+    "fields": {
+      "0": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserLiteral_Float_0",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ParserLiteral_Int",
+    "named": true,
+    "fields": {
+      "0": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserLiteral_Int_0",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ParserOutputType",
+    "named": true,
+    "fields": {
+      "_c": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserOutputType__c",
+            "named": true
+          }
+        ]
+      },
+      "arg_type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserType",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ParserOutputType__c",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "ParserProgram_functions_vec_contents",
+    "named": true,
+    "fields": {
+      "ParserProgram_functions_vec_element": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserFunction",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ParserProgram_imports_vec_contents",
+    "named": true,
+    "fields": {
+      "ParserProgram_imports_vec_element": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserImport",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ParserType",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "ParserType_Parameterized",
+          "named": true
+        },
+        {
+          "type": "ParserType_Primitive",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ParserType_Parameterized",
+    "named": true,
+    "fields": {
+      "0": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Ident",
+            "named": true
+          }
+        ]
+      },
+      "1": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserType_Parameterized_1",
+            "named": true
+          }
+        ]
+      },
+      "2": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserType",
+            "named": true
+          }
+        ]
+      },
+      "3": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ParserType_Parameterized_3",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ParserType_Primitive",
+    "named": true,
+    "fields": {
+      "0": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Ident",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "Whitespace",
+    "named": true,
+    "fields": {
+      "_whitespace": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Whitespace__whitespace",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "source_file",
+    "named": true,
+    "fields": {
+      "functions": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ParserProgram_functions_vec_contents",
+            "named": true
+          }
+        ]
+      },
+      "imports": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ParserProgram_imports_vec_contents",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": ",",
+    "named": false
+  },
+  {
+    "type": ":",
+    "named": false
+  },
+  {
+    "type": ";",
+    "named": false
+  },
+  {
+    "type": "=",
+    "named": false
+  },
+  {
+    "type": "Alias__a",
+    "named": true
+  },
+  {
+    "type": "Comment__comment",
+    "named": true
+  },
+  {
+    "type": "Func_name",
+    "named": true
+  },
+  {
+    "type": "Ident_name",
+    "named": true
+  },
+  {
+    "type": "Label_name",
+    "named": true
+  },
+  {
+    "type": "ParserArgumentList__l",
+    "named": true
+  },
+  {
+    "type": "ParserArgumentList__r",
+    "named": true
+  },
+  {
+    "type": "ParserConstOps_Const_0",
+    "named": true
+  },
+  {
+    "type": "ParserFunction__l",
+    "named": true
+  },
+  {
+    "type": "ParserFunction__r",
+    "named": true
+  },
+  {
+    "type": "ParserImport__s",
+    "named": true
+  },
+  {
+    "type": "ParserImport__t",
+    "named": true
+  },
+  {
+    "type": "ParserImport_path",
+    "named": true
+  },
+  {
+    "type": "ParserLiteral_Bool_0",
+    "named": true
+  },
+  {
+    "type": "ParserLiteral_Float_0",
+    "named": true
+  },
+  {
+    "type": "ParserLiteral_Int_0",
+    "named": true
+  },
+  {
+    "type": "ParserType_Parameterized_1",
+    "named": true
+  },
+  {
+    "type": "ParserType_Parameterized_3",
+    "named": true
+  },
+  {
+    "type": "Whitespace__whitespace",
+    "named": true
+  }
+]

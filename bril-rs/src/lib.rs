@@ -9,6 +9,7 @@ pub mod abstract_program;
 pub mod conversion;
 /// Provides the structured representation of Bril programs
 pub mod program;
+
 pub use abstract_program::*;
 pub use program::*;
 
