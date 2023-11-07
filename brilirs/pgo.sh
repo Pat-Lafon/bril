@@ -18,7 +18,7 @@ RUSTFLAGS="-Cprofile-generate=/tmp/pgo-data" \
   cargo build --release
 
 # STEP 2: Run the instrumented binaries with some typical data
-./long_benchmark.sh
+make bench || true
 
 # STEP 3: Merge the `.profraw` files into a `.profdata` file
 touch merged.profdata
