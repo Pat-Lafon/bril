@@ -3,15 +3,10 @@ use crate::error::{InterpError, PositionalInterpError};
 use bril2json::escape_control_chars;
 use bril_rs::Instruction;
 
-use fxhash::FxHashMap;
-
-use mimalloc::MiMalloc;
-
-#[global_allocator]
-static GLOBAL: MiMalloc = MiMalloc;
+use crate::allocator::{optimized_val_output, BrilAllocator, BrilPointer, Value};
+use crate::basic_heap::{BasicHeap};
 
 use std::cmp::max;
-use std::fmt;
 
 // The Environment is the data structure used to represent the stack of the program.
 // The values of all variables are store here. Each variable is represented as a number so
@@ -23,7 +18,7 @@ use std::fmt;
 //  |        Call "foo" pointer(frame size 2)
 //  |        |
 // [a, b, c, a, b]
-struct Environment {
+struct Environment<P: BrilPointer> {
   // Pointer into env for the start of the current frame
   current_pointer: usize,
   // Size of the current frame
@@ -31,10 +26,10 @@ struct Environment {
   // A list of all stack pointers for valid frames on the stack
   stack_pointers: Vec<(usize, usize)>,
   // env is used like a stack. Assume it only grows
-  env: Vec<Value>,
+  env: Vec<Value<P>>,
 }
 
-impl Environment {
+impl<P: BrilPointer> Environment<P> {
   pub fn new(size: usize) -> Self {
     Self {
       current_pointer: 0,
@@ -45,19 +40,19 @@ impl Environment {
     }
   }
 
-  pub fn get(&self, ident: usize) -> &Value {
+  pub fn get(&self, ident: usize) -> &Value<P> {
     // A bril program is well formed when, dynamically, every variable is defined before its use.
     // If this is violated, this will return Value::Uninitialized and the whole interpreter will come crashing down.
     self.env.get(self.current_pointer + ident).unwrap()
   }
 
   // Used for getting arguments that should be passed to the current frame from the previous one
-  pub fn get_from_last_frame(&self, ident: usize) -> &Value {
+  pub fn get_from_last_frame(&self, ident: usize) -> &Value<P> {
     let past_pointer = self.stack_pointers.last().unwrap().0;
     self.env.get(past_pointer + ident).unwrap()
   }
 
-  pub fn set(&mut self, ident: usize, val: Value) {
+  pub fn set(&mut self, ident: usize, val: Value<P>) {
     self.env[self.current_pointer + ident] = val;
   }
   // Push a new frame onto the stack
@@ -87,222 +82,23 @@ impl Environment {
   }
 }
 
-// todo: This is basically a copy of the heap implement in brili and we could probably do something smarter. This currently isn't that worth it to optimize because most benchmarks do not use the memory extension nor do they run for very long. You (the reader in the future) may be working with bril programs that you would like to speed up that extensively use the bril memory extension. In that case, it would be worth seeing how to implement Heap without a map based memory. Maybe try to re-implement malloc for a large Vec<Value>?
-struct Heap {
-  memory: FxHashMap<usize, Vec<Value>>,
-  base_num_counter: usize,
-}
-
-impl Default for Heap {
-  fn default() -> Self {
-    Self {
-      memory: FxHashMap::with_capacity_and_hasher(20, fxhash::FxBuildHasher::default()),
-      base_num_counter: 0,
-    }
-  }
-}
-
-impl Heap {
-  fn is_empty(&self) -> bool {
-    self.memory.is_empty()
-  }
-
-  fn alloc(&mut self, amount: i64) -> Result<Value, InterpError> {
-    let amount: usize = amount
-      .try_into()
-      .map_err(|_| InterpError::CannotAllocSize(amount))?;
-    let base = self.base_num_counter;
-    self.base_num_counter += 1;
-    self.memory.insert(base, vec![Value::default(); amount]);
-    Ok(Value::Pointer(Pointer { base, offset: 0 }))
-  }
-
-  fn free(&mut self, key: &Pointer) -> Result<(), InterpError> {
-    if self.memory.remove(&key.base).is_some() && key.offset == 0 {
-      Ok(())
-    } else {
-      Err(InterpError::IllegalFree(key.base, key.offset))
-    }
-  }
-
-  fn write(&mut self, key: &Pointer, val: Value) -> Result<(), InterpError> {
-    // Will check that key.offset is >=0
-    let offset: usize = key
-      .offset
-      .try_into()
-      .map_err(|_| InterpError::InvalidMemoryAccess(key.base, key.offset))?;
-    match self.memory.get_mut(&key.base) {
-      Some(vec) if vec.len() > offset => {
-        vec[offset] = val;
-        Ok(())
-      }
-      Some(_) | None => Err(InterpError::InvalidMemoryAccess(key.base, key.offset)),
-    }
-  }
-
-  fn read(&self, key: &Pointer) -> Result<&Value, InterpError> {
-    // Will check that key.offset is >=0
-    let offset: usize = key
-      .offset
-      .try_into()
-      .map_err(|_| InterpError::InvalidMemoryAccess(key.base, key.offset))?;
-    self
-      .memory
-      .get(&key.base)
-      .and_then(|vec| vec.get(offset))
-      .ok_or(InterpError::InvalidMemoryAccess(key.base, key.offset))
-      .and_then(|val| match val {
-        Value::Uninitialized => Err(InterpError::UsingUninitializedMemory),
-        _ => Ok(val),
-      })
-  }
-}
-
 // A getter function for when you know what constructor of the Value enum you have and
 // you just want the underlying value(like a f64).
 // Or can just be used to get a owned version of the Value
-fn get_arg<'a, T: From<&'a Value>>(vars: &'a Environment, index: usize, args: &[usize]) -> T {
+fn get_arg<'a, P: BrilPointer, T: From<&'a Value<P>>>(
+  vars: &'a Environment<P>,
+  index: usize,
+  args: &[usize],
+) -> T {
   T::from(vars.get(args[index]))
 }
 
-#[derive(Debug, Default, Clone, Copy)]
-enum Value {
-  Int(i64),
-  Bool(bool),
-  Float(f64),
-  Char(char),
-  Pointer(Pointer),
-  #[default]
-  Uninitialized,
-}
-
-#[derive(Debug, Clone, PartialEq, Copy)]
-struct Pointer {
-  base: usize,
-  offset: i64,
-}
-
-impl Pointer {
-  const fn add(&self, offset: i64) -> Self {
-    Self {
-      base: self.base,
-      offset: self.offset + offset,
-    }
-  }
-}
-
-impl fmt::Display for Value {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    match self {
-      Self::Int(i) => write!(f, "{i}"),
-      Self::Bool(b) => write!(f, "{b}"),
-      Self::Float(v) if v.is_infinite() && v.is_sign_positive() => write!(f, "Infinity"),
-      Self::Float(v) if v.is_infinite() && v.is_sign_negative() => write!(f, "-Infinity"),
-      Self::Float(v) => write!(f, "{v:.17}"),
-      Self::Char(c) => write!(f, "{c}"),
-      Self::Pointer(p) => write!(f, "{p:?}"),
-      Self::Uninitialized => unreachable!(),
-    }
-  }
-}
-
-fn optimized_val_output<T: std::io::Write>(out: &mut T, val: &Value) -> Result<(), std::io::Error> {
-  match val {
-    Value::Int(i) => out.write_all(itoa::Buffer::new().format(*i).as_bytes()),
-    Value::Bool(b) => out.write_all(if *b { b"true" } else { b"false" }),
-    Value::Float(f) if f.is_infinite() && f.is_sign_positive() => out.write_all(b"Infinity"),
-    Value::Float(f) if f.is_infinite() && f.is_sign_negative() => out.write_all(b"-Infinity"),
-    Value::Float(f) if f.is_nan() => out.write_all(b"NaN"),
-    Value::Float(f) => out.write_all(format!("{f:.17}").as_bytes()),
-    Value::Char(c) => {
-      let buf = &mut [0_u8; 2];
-      out.write_all(c.encode_utf8(buf).as_bytes())
-    }
-    Value::Pointer(p) => out.write_all(format!("{p:?}").as_bytes()),
-    Value::Uninitialized => unreachable!(),
-  }
-}
-
-impl From<&bril_rs::Literal> for Value {
-  fn from(l: &bril_rs::Literal) -> Self {
-    match l {
-      bril_rs::Literal::Int(i) => Self::Int(*i),
-      bril_rs::Literal::Bool(b) => Self::Bool(*b),
-      bril_rs::Literal::Float(f) => Self::Float(*f),
-      bril_rs::Literal::Char(c) => Self::Char(*c),
-    }
-  }
-}
-
-impl From<bril_rs::Literal> for Value {
-  fn from(l: bril_rs::Literal) -> Self {
-    match l {
-      bril_rs::Literal::Int(i) => Self::Int(i),
-      bril_rs::Literal::Bool(b) => Self::Bool(b),
-      bril_rs::Literal::Float(f) => Self::Float(f),
-      bril_rs::Literal::Char(c) => Self::Char(c),
-    }
-  }
-}
-
-impl From<&Value> for i64 {
-  fn from(value: &Value) -> Self {
-    if let Value::Int(i) = value {
-      *i
-    } else {
-      unreachable!()
-    }
-  }
-}
-
-impl From<&Value> for bool {
-  fn from(value: &Value) -> Self {
-    if let Value::Bool(b) = value {
-      *b
-    } else {
-      unreachable!()
-    }
-  }
-}
-
-impl From<&Value> for f64 {
-  fn from(value: &Value) -> Self {
-    if let Value::Float(f) = value {
-      *f
-    } else {
-      unreachable!()
-    }
-  }
-}
-
-impl From<&Value> for char {
-  fn from(value: &Value) -> Self {
-    if let Value::Char(c) = value {
-      *c
-    } else {
-      unreachable!()
-    }
-  }
-}
-
-impl<'a> From<&'a Value> for &'a Pointer {
-  fn from(value: &'a Value) -> Self {
-    if let Value::Pointer(p) = value {
-      p
-    } else {
-      unreachable!()
-    }
-  }
-}
-
-impl From<&Self> for Value {
-  fn from(value: &Self) -> Self {
-    *value
-  }
-}
-
 // Sets up the Environment for the next function call with the supplied arguments
-fn make_func_args(callee_func: &BBFunction, args: &[usize], vars: &mut Environment) {
+fn make_func_args<P: BrilPointer>(
+  callee_func: &BBFunction,
+  args: &[usize],
+  vars: &mut Environment<P>,
+) {
   vars.push_frame(callee_func.num_of_vars);
 
   args
@@ -310,12 +106,12 @@ fn make_func_args(callee_func: &BBFunction, args: &[usize], vars: &mut Environme
     .zip(callee_func.args_as_nums.iter())
     .for_each(|(arg_name, expected_arg)| {
       let arg = vars.get_from_last_frame(*arg_name);
-      vars.set(*expected_arg, *arg);
+      vars.set(*expected_arg, arg.clone());
     });
 }
 
-fn execute_value_op<T: std::io::Write>(
-  state: &mut State<T>,
+fn execute_value_op<T: std::io::Write, P: BrilPointer, H: BrilAllocator<P>>(
+  state: &mut State<T, P, H>,
   op: bril_rs::ValueOps,
   dest: usize,
   args: &[usize],
@@ -329,147 +125,147 @@ fn execute_value_op<T: std::io::Write>(
   };
   match op {
     Add => {
-      let arg0 = get_arg::<i64>(&state.env, 0, args);
-      let arg1 = get_arg::<i64>(&state.env, 1, args);
+      let arg0 = get_arg::<P, i64>(&state.env, 0, args);
+      let arg1 = get_arg::<P, i64>(&state.env, 1, args);
       state.env.set(dest, Value::Int(arg0.wrapping_add(arg1)));
     }
     Mul => {
-      let arg0 = get_arg::<i64>(&state.env, 0, args);
-      let arg1 = get_arg::<i64>(&state.env, 1, args);
+      let arg0 = get_arg::<P, i64>(&state.env, 0, args);
+      let arg1 = get_arg::<P, i64>(&state.env, 1, args);
       state.env.set(dest, Value::Int(arg0.wrapping_mul(arg1)));
     }
     Sub => {
-      let arg0 = get_arg::<i64>(&state.env, 0, args);
-      let arg1 = get_arg::<i64>(&state.env, 1, args);
+      let arg0 = get_arg::<P, i64>(&state.env, 0, args);
+      let arg1 = get_arg::<P, i64>(&state.env, 1, args);
       state.env.set(dest, Value::Int(arg0.wrapping_sub(arg1)));
     }
     Div => {
-      let arg0 = get_arg::<i64>(&state.env, 0, args);
-      let arg1 = get_arg::<i64>(&state.env, 1, args);
+      let arg0 = get_arg::<P, i64>(&state.env, 0, args);
+      let arg1 = get_arg::<P, i64>(&state.env, 1, args);
       if arg1 == 0 {
         return Err(InterpError::DivisionByZero);
       }
       state.env.set(dest, Value::Int(arg0.wrapping_div(arg1)));
     }
     Eq => {
-      let arg0 = get_arg::<i64>(&state.env, 0, args);
-      let arg1 = get_arg::<i64>(&state.env, 1, args);
+      let arg0 = get_arg::<P, i64>(&state.env, 0, args);
+      let arg1 = get_arg::<P, i64>(&state.env, 1, args);
       state.env.set(dest, Value::Bool(arg0 == arg1));
     }
     Lt => {
-      let arg0 = get_arg::<i64>(&state.env, 0, args);
-      let arg1 = get_arg::<i64>(&state.env, 1, args);
+      let arg0 = get_arg::<P, i64>(&state.env, 0, args);
+      let arg1 = get_arg::<P, i64>(&state.env, 1, args);
       state.env.set(dest, Value::Bool(arg0 < arg1));
     }
     Gt => {
-      let arg0 = get_arg::<i64>(&state.env, 0, args);
-      let arg1 = get_arg::<i64>(&state.env, 1, args);
+      let arg0 = get_arg::<P, i64>(&state.env, 0, args);
+      let arg1 = get_arg::<P, i64>(&state.env, 1, args);
       state.env.set(dest, Value::Bool(arg0 > arg1));
     }
     Le => {
-      let arg0 = get_arg::<i64>(&state.env, 0, args);
-      let arg1 = get_arg::<i64>(&state.env, 1, args);
+      let arg0 = get_arg::<P, i64>(&state.env, 0, args);
+      let arg1 = get_arg::<P, i64>(&state.env, 1, args);
       state.env.set(dest, Value::Bool(arg0 <= arg1));
     }
     Ge => {
-      let arg0 = get_arg::<i64>(&state.env, 0, args);
-      let arg1 = get_arg::<i64>(&state.env, 1, args);
+      let arg0 = get_arg::<P, i64>(&state.env, 0, args);
+      let arg1 = get_arg::<P, i64>(&state.env, 1, args);
       state.env.set(dest, Value::Bool(arg0 >= arg1));
     }
     Not => {
-      let arg0 = get_arg::<bool>(&state.env, 0, args);
+      let arg0 = get_arg::<P, bool>(&state.env, 0, args);
       state.env.set(dest, Value::Bool(!arg0));
     }
     And => {
-      let arg0 = get_arg::<bool>(&state.env, 0, args);
-      let arg1 = get_arg::<bool>(&state.env, 1, args);
+      let arg0 = get_arg::<P, bool>(&state.env, 0, args);
+      let arg1 = get_arg::<P, bool>(&state.env, 1, args);
       state.env.set(dest, Value::Bool(arg0 && arg1));
     }
     Or => {
-      let arg0 = get_arg::<bool>(&state.env, 0, args);
-      let arg1 = get_arg::<bool>(&state.env, 1, args);
+      let arg0 = get_arg::<P, bool>(&state.env, 0, args);
+      let arg1 = get_arg::<P, bool>(&state.env, 1, args);
       state.env.set(dest, Value::Bool(arg0 || arg1));
     }
     Id => {
-      let src = get_arg::<Value>(&state.env, 0, args);
+      let src = get_arg::<P, Value<P>>(&state.env, 0, args);
       state.env.set(dest, src);
     }
     Fadd => {
-      let arg0 = get_arg::<f64>(&state.env, 0, args);
-      let arg1 = get_arg::<f64>(&state.env, 1, args);
+      let arg0 = get_arg::<P, f64>(&state.env, 0, args);
+      let arg1 = get_arg::<P, f64>(&state.env, 1, args);
       state.env.set(dest, Value::Float(arg0 + arg1));
     }
     Fmul => {
-      let arg0 = get_arg::<f64>(&state.env, 0, args);
-      let arg1 = get_arg::<f64>(&state.env, 1, args);
+      let arg0 = get_arg::<P, f64>(&state.env, 0, args);
+      let arg1 = get_arg::<P, f64>(&state.env, 1, args);
       state.env.set(dest, Value::Float(arg0 * arg1));
     }
     Fsub => {
-      let arg0 = get_arg::<f64>(&state.env, 0, args);
-      let arg1 = get_arg::<f64>(&state.env, 1, args);
+      let arg0 = get_arg::<P, f64>(&state.env, 0, args);
+      let arg1 = get_arg::<P, f64>(&state.env, 1, args);
       state.env.set(dest, Value::Float(arg0 - arg1));
     }
     Fdiv => {
-      let arg0 = get_arg::<f64>(&state.env, 0, args);
-      let arg1 = get_arg::<f64>(&state.env, 1, args);
+      let arg0 = get_arg::<P, f64>(&state.env, 0, args);
+      let arg1 = get_arg::<P, f64>(&state.env, 1, args);
       state.env.set(dest, Value::Float(arg0 / arg1));
     }
     Feq => {
-      let arg0 = get_arg::<f64>(&state.env, 0, args);
-      let arg1 = get_arg::<f64>(&state.env, 1, args);
+      let arg0 = get_arg::<P, f64>(&state.env, 0, args);
+      let arg1 = get_arg::<P, f64>(&state.env, 1, args);
       state.env.set(dest, Value::Bool(arg0 == arg1));
     }
     Flt => {
-      let arg0 = get_arg::<f64>(&state.env, 0, args);
-      let arg1 = get_arg::<f64>(&state.env, 1, args);
+      let arg0 = get_arg::<P, f64>(&state.env, 0, args);
+      let arg1 = get_arg::<P, f64>(&state.env, 1, args);
       state.env.set(dest, Value::Bool(arg0 < arg1));
     }
     Fgt => {
-      let arg0 = get_arg::<f64>(&state.env, 0, args);
-      let arg1 = get_arg::<f64>(&state.env, 1, args);
+      let arg0 = get_arg::<P, f64>(&state.env, 0, args);
+      let arg1 = get_arg::<P, f64>(&state.env, 1, args);
       state.env.set(dest, Value::Bool(arg0 > arg1));
     }
     Fle => {
-      let arg0 = get_arg::<f64>(&state.env, 0, args);
-      let arg1 = get_arg::<f64>(&state.env, 1, args);
+      let arg0 = get_arg::<P, f64>(&state.env, 0, args);
+      let arg1 = get_arg::<P, f64>(&state.env, 1, args);
       state.env.set(dest, Value::Bool(arg0 <= arg1));
     }
     Fge => {
-      let arg0 = get_arg::<f64>(&state.env, 0, args);
-      let arg1 = get_arg::<f64>(&state.env, 1, args);
+      let arg0 = get_arg::<P, f64>(&state.env, 0, args);
+      let arg1 = get_arg::<P, f64>(&state.env, 1, args);
       state.env.set(dest, Value::Bool(arg0 >= arg1));
     }
     Ceq => {
-      let arg0 = get_arg::<char>(&state.env, 0, args);
-      let arg1 = get_arg::<char>(&state.env, 1, args);
+      let arg0 = get_arg::<P, char>(&state.env, 0, args);
+      let arg1 = get_arg::<P, char>(&state.env, 1, args);
       state.env.set(dest, Value::Bool(arg0 == arg1));
     }
     Clt => {
-      let arg0 = get_arg::<char>(&state.env, 0, args);
-      let arg1 = get_arg::<char>(&state.env, 1, args);
+      let arg0 = get_arg::<P, char>(&state.env, 0, args);
+      let arg1 = get_arg::<P, char>(&state.env, 1, args);
       state.env.set(dest, Value::Bool(arg0 < arg1));
     }
     Cgt => {
-      let arg0 = get_arg::<char>(&state.env, 0, args);
-      let arg1 = get_arg::<char>(&state.env, 1, args);
+      let arg0 = get_arg::<P, char>(&state.env, 0, args);
+      let arg1 = get_arg::<P, char>(&state.env, 1, args);
       state.env.set(dest, Value::Bool(arg0 > arg1));
     }
     Cle => {
-      let arg0 = get_arg::<char>(&state.env, 0, args);
-      let arg1 = get_arg::<char>(&state.env, 1, args);
+      let arg0 = get_arg::<P, char>(&state.env, 0, args);
+      let arg1 = get_arg::<P, char>(&state.env, 1, args);
       state.env.set(dest, Value::Bool(arg0 <= arg1));
     }
     Cge => {
-      let arg0 = get_arg::<char>(&state.env, 0, args);
-      let arg1 = get_arg::<char>(&state.env, 1, args);
+      let arg0 = get_arg::<P, char>(&state.env, 0, args);
+      let arg1 = get_arg::<P, char>(&state.env, 1, args);
       state.env.set(dest, Value::Bool(arg0 >= arg1));
     }
     Char2int => {
-      let arg0 = get_arg::<char>(&state.env, 0, args);
+      let arg0 = get_arg::<P, char>(&state.env, 0, args);
       state.env.set(dest, Value::Int(u32::from(arg0).into()));
     }
     Int2char => {
-      let arg0 = get_arg::<i64>(&state.env, 0, args);
+      let arg0 = get_arg::<P, i64>(&state.env, 0, args);
 
       let arg0_char = u32::try_from(arg0)
         .ok()
@@ -496,23 +292,23 @@ fn execute_value_op<T: std::io::Write>(
           .iter()
           .position(|l| l == last_label)
           .ok_or_else(|| InterpError::PhiMissingLabel(last_label.to_string()))
-          .map(|i| get_arg::<Value>(&state.env, i, args))?;
+          .map(|i| get_arg::<P, Value<P>>(&state.env, i, args))?;
         state.env.set(dest, arg);
       }
     },
     Alloc => {
-      let arg0 = get_arg::<i64>(&state.env, 0, args);
+      let arg0 = get_arg::<P, i64>(&state.env, 0, args);
       let res = state.heap.alloc(arg0)?;
       state.env.set(dest, res);
     }
     Load => {
-      let arg0 = get_arg::<&Pointer>(&state.env, 0, args);
-      let res = state.heap.read(arg0)?;
-      state.env.set(dest, *res);
+      let arg0 = get_arg::<P, P>(&state.env, 0, args);
+      let res = state.heap.read(&arg0)?;
+      state.env.set(dest, res.clone());
     }
     PtrAdd => {
-      let arg0 = get_arg::<&Pointer>(&state.env, 0, args);
-      let arg1 = get_arg::<i64>(&state.env, 1, args);
+      let arg0 = get_arg::<P, P>(&state.env, 0, args);
+      let arg1 = get_arg::<P, i64>(&state.env, 1, args);
       let res = Value::Pointer(arg0.add(arg1));
       state.env.set(dest, res);
     }
@@ -520,15 +316,15 @@ fn execute_value_op<T: std::io::Write>(
   Ok(())
 }
 
-fn execute_effect_op<T: std::io::Write>(
-  state: &mut State<T>,
+fn execute_effect_op<T: std::io::Write, P: BrilPointer, H: BrilAllocator<P>>(
+  state: &mut State<T, P, H>,
   op: bril_rs::EffectOps,
   args: &[usize],
   funcs: &[usize],
   curr_block: &BasicBlock,
   // There are two output variables where values are stored to effect the loop execution.
   next_block_idx: &mut Option<usize>,
-  result: &mut Option<Value>,
+  result: &mut Option<Value<P>>,
 ) -> Result<(), InterpError> {
   use bril_rs::EffectOps::{
     Branch, Call, Commit, Free, Guard, Jump, Nop, Print, Return, Speculate, Store,
@@ -538,13 +334,13 @@ fn execute_effect_op<T: std::io::Write>(
       *next_block_idx = Some(curr_block.exit[0]);
     }
     Branch => {
-      let bool_arg0 = get_arg::<bool>(&state.env, 0, args);
+      let bool_arg0 = get_arg::<P, bool>(&state.env, 0, args);
       let exit_idx = usize::from(!bool_arg0);
       *next_block_idx = Some(curr_block.exit[exit_idx]);
     }
     Return => {
       if !args.is_empty() {
-        *result = Some(get_arg::<Value>(&state.env, 0, args));
+        *result = Some(get_arg::<P, Value<P>>(&state.env, 0, args));
       }
     }
     Print => {
@@ -576,23 +372,23 @@ fn execute_effect_op<T: std::io::Write>(
       state.env.pop_frame();
     }
     Store => {
-      let arg0 = get_arg::<&Pointer>(&state.env, 0, args);
-      let arg1 = get_arg::<Value>(&state.env, 1, args);
-      state.heap.write(arg0, arg1)?;
+      let arg0 = get_arg::<P, P>(&state.env, 0, args);
+      let arg1 = get_arg::<P, Value<P>>(&state.env, 1, args);
+      state.heap.write(&arg0, arg1)?;
     }
     Free => {
-      let arg0 = get_arg::<&Pointer>(&state.env, 0, args);
-      state.heap.free(arg0)?;
+      let arg0 = get_arg::<P, P>(&state.env, 0, args);
+      state.heap.free(&arg0)?;
     }
     Speculate | Commit | Guard => unimplemented!(),
   }
   Ok(())
 }
 
-fn execute<'a, T: std::io::Write>(
-  state: &mut State<'a, T>,
+fn execute<'a, T: std::io::Write, P: BrilPointer, H: BrilAllocator<P>>(
+  state: &mut State<'a, T, P, H>,
   func: &'a BBFunction,
-) -> Result<Option<Value>, PositionalInterpError> {
+) -> Result<Option<Value<P>>, PositionalInterpError> {
   let mut last_label;
   let mut current_label = None;
   let mut curr_block_idx = 0;
@@ -692,12 +488,12 @@ fn execute<'a, T: std::io::Write>(
   }
 }
 
-fn parse_args(
-  mut env: Environment,
+fn parse_args<P: BrilPointer>(
+  mut env: Environment<P>,
   args: &[bril_rs::Argument],
   args_as_nums: &[usize],
   inputs: &[String],
-) -> Result<Environment, InterpError> {
+) -> Result<Environment<P>, InterpError> {
   if args.is_empty() && inputs.is_empty() {
     Ok(env)
   } else if inputs.len() != args.len() {
@@ -759,16 +555,16 @@ fn parse_args(
 }
 
 // State captures the parts of the interpreter that are used across function boundaries
-struct State<'a, T: std::io::Write> {
+struct State<'a, T: std::io::Write, P: BrilPointer, H: BrilAllocator<P>> {
   prog: &'a BBProgram,
-  env: Environment,
-  heap: Heap,
+  env: Environment<P>,
+  heap: H,
   out: T,
   instruction_count: usize,
 }
 
-impl<'a, T: std::io::Write> State<'a, T> {
-  const fn new(prog: &'a BBProgram, env: Environment, heap: Heap, out: T) -> Self {
+impl<'a, T: std::io::Write, P: BrilPointer, H: BrilAllocator<P>> State<'a, T, P, H> {
+  const fn new(prog: &'a BBProgram, env: Environment<P>, heap: H, out: T) -> Self {
     Self {
       prog,
       env,
@@ -797,7 +593,7 @@ pub fn execute_main<T: std::io::Write, U: std::io::Write>(
     .ok_or(InterpError::NoMainFunction)?;
 
   let mut env = Environment::new(main_func.num_of_vars);
-  let heap = Heap::default();
+  let heap = BasicHeap::default();
 
   env = parse_args(env, &main_func.args, &main_func.args_as_nums, input_args)
     .map_err(|e| e.add_pos(main_func.pos.clone()))?;

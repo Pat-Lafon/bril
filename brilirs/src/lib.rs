@@ -1,3 +1,4 @@
+#![feature(lazy_cell)]
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
 #![warn(missing_docs)]
 #![allow(clippy::float_cmp)]
@@ -11,8 +12,10 @@ use basic_block::BBProgram;
 use bril_rs::Program;
 use error::PositionalInterpError;
 
+mod allocator;
 /// The internal representation of brilirs, provided a ```TryFrom<Program>``` conversion
 pub mod basic_block;
+mod basic_heap;
 /// Provides ```check::type_check``` to validate [Program]
 pub mod check;
 #[doc(hidden)]
@@ -21,6 +24,7 @@ pub mod cli;
 pub mod error;
 /// Provides ```interp::execute_main``` to execute [Program] that have been converted into [`BBProgram`]
 pub mod interp;
+mod mmtk;
 
 #[doc(hidden)]
 pub fn run_input<T: std::io::Write, U: std::io::Write>(
