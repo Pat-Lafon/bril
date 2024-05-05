@@ -1,3 +1,4 @@
+workspace = { members = ["runtime", "runtime/libc_print-dynamic"] }
 [package]
 name = "brillvm"
 version = "0.1.0"
@@ -25,20 +26,11 @@ libc-print = "0.1"
 path = ".."
 features = ["float", "ssa", "memory"]
 
-[[bin]]
-name = "rt"
-path = "bin/rt.rs"
+#[[bin]]
+#name = "rt"
+#path = "bin/rt.rs"
 
 # Need to set a default `main` to build `rt` bin
 [[bin]]
 name = "main"
 path = "src/main.rs"
-
-# To properly set up the rt library for linking with LLVM
-[profile.dev]
-panic = "abort"
-lto = true
-
-[profile.release]
-panic = "abort"
-lto = true

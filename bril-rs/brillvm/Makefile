@@ -19,15 +19,15 @@ clean:
 
 .PHONY: rt
 rt:
-	cargo rustc --bin rt --release -- --emit=llvm-bc && mv target/release/deps/rt-*.bc rt.bc
+	cargo rustc --manifest-path runtime/Cargo.toml --release -- --emit=llvm-bc && mv target/release/deps/runtime-*.bc rt.bc
 
 example:
 # bril2json < ../../benchmarks/mem/sieve.bril | cargo run -- -i 100
 	bril2json < ../../benchmarks/mixed/cholesky.bril | cargo run -- -i
 
 .PHONY: test
-test: build rt
-	turnt -e brillvm $(TESTS)
+test:
+	turnt -v -e brillvm $(TESTS)
 
 .PHONY: benchmark
 benchmark: build rt

@@ -3,8 +3,6 @@ use std::alloc::{alloc, dealloc};
 use std::convert::TryInto;
 use std::mem::size_of; */
 #![no_std]
-#![no_main]
-#![feature(start)]
 
 use core::ffi::{c_char, CStr};
 
@@ -71,12 +69,4 @@ pub unsafe extern "C" fn _bril_parse_float(arg: *const c_char) -> f64 {
     let c_str = unsafe { CStr::from_ptr(arg) };
     let r_str = c_str.to_str().unwrap();
     r_str.parse::<f64>().unwrap()
-}
-
-
-
-#[cfg(not(test))]
-#[panic_handler]
-fn my_panic(_info: &core::panic::PanicInfo) -> ! {
-    loop {}
 }

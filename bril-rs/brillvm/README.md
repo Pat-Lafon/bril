@@ -11,6 +11,13 @@ be updated as Inkwell gets new support, within the constraints of the rust compi
 
 You must have a linkable runtime library available in the LLVM bc format. You can get this by calling `make rt`
 
+## TODO
+
+Somehow include
+```sh
+bril2json < ../../benchmarks/mixed/cholesky.bril | cargo run | lli -load /Users/patricklafontaine/.rustup/toolchains/stable-aarch64-apple-darwin/lib/libstd-d7097f83793f285d.dylib -load target/release/deps/liblibc_print_dynamic.dylib
+```
+
 ## Usage
 
 Example: `bril2json < ../../benchmarks/mem/sieve.bril | cargo run -- -i 100`
@@ -54,3 +61,7 @@ around has found that you might need
 `export LIBRARY_PATH=$LIBRARY_PATH:$(brew --prefix zstd)/lib/`. Apparently this
 also hit the ruby community at some point so, they have many issues with similar
 resolutions to this problem.
+
+Debian Dev containers:
+`sudo apt update && sudo apt install -y zstd && sudo apt install -y libzstd-dev`
+(Not sure that you need all of these. This is what I installed in trial and error)
