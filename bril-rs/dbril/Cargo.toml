@@ -1,0 +1,9 @@
+[package]
+name = "dbril"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# I expect that salsa might change heavily so I should pin the commit
+salsa = { git = "https://github.com/salsa-rs/salsa.git", rev = "4d2ccff" }
+bril-rs = { path = ".." }
