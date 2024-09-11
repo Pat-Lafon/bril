@@ -36,6 +36,7 @@ features = ["memory", "float", "ssa", "speculate", "position", "char"]
 [dependencies.bril2json]
 version = "0.1.0"
 path = "../bril-rs/bril2json"
+features = ["memory", "float", "char"]
 
 [profile.release]
 # this can shave off a few ms but doubles the build time so it's not really worth it
