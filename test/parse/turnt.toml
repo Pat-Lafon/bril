@@ -4,5 +4,5 @@ output.json = "-"
 
 [envs.bril-rs]
 default = false
-command = "cargo run --manifest-path ../../bril-rs/bril2json/Cargo.toml -- {args} < {filename}"
+command = "cargo run --manifest-path ../../bril-rs/bril2json/Cargo.toml --features char,float,memory  -- {args} < {filename}"
 output.json = "-"

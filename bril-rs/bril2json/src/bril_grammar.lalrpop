@@ -1,24 +1,16 @@
-#![expect(clippy::no_effect_underscore_binding)]
-#![expect(clippy::unnested_or_patterns)]
-#![expect(clippy::trivially_copy_pass_by_ref)]
-#![expect(clippy::missing_const_for_fn)]
-#![expect(clippy::unnecessary_wraps)]
-#![expect(clippy::redundant_pub_crate)]
-#![expect(clippy::cloned_instead_of_copied)]
-#![expect(clippy::too_many_lines)]
-#![expect(clippy::use_self)]
-#![expect(clippy::needless_pass_by_value)]
-#![expect(clippy::cast_sign_loss)]
-#![expect(clippy::must_use_candidate)]
-#![expect(clippy::uninlined_format_args)]
-#![expect(clippy::match_same_arms)]
-#![expect(clippy::option_if_let_else)]
-#![expect(clippy::extra_unused_lifetimes)]
-
 use std::str::FromStr;
 use std::path::PathBuf;
-use crate::{Lines, ParsingArgs, escape_control_chars};
-use bril_rs::{AbstractProgram, AbstractFunction, AbstractArgument, AbstractCode, AbstractInstruction, ConstOps, AbstractType, Literal, Import, ImportedFunction};
+use crate::{Lines, ParsingArgs};
+use bril_rs::{AbstractProgram, AbstractFunction, AbstractArgument, AbstractCode, AbstractInstruction, ConstOps, AbstractType, Literal};
+
+/*
+
+#[cfg(feature = "import")]
+use bril_rs::{Import, ImportedFunction};
+
+#[cfg(feature = "char")]
+use crate::escape_control_chars;
+*/
 
 grammar(lines : &Lines);
 
@@ -35,6 +27,7 @@ match {
     _
 }
 
+#[cfg(feature = "import")]
 pub AbstractProgram : AbstractProgram = {
     <i: (<Imports>)*> <f :(<AbstractFunction>)*> => AbstractProgram {
         imports: i,
@@ -42,24 +35,34 @@ pub AbstractProgram : AbstractProgram = {
     }
 }
 
-Imports : Import = {
+#[cfg(not(feature = "import"))]
+pub AbstractProgram : AbstractProgram = {
+    <f :(<AbstractFunction>)*> => AbstractProgram {
+        functions : f,
+    }
+}
+
+#[cfg(feature = "import")]
+Imports : bril_rs::Import = {
     "from" <p: Path> "import" <n:Comma<ImportedFunction>> ";" => {
-        Import {
+        bril_rs::Import {
             path: p,
             functions: n,
         }
     }
 }
 
-ImportedFunction : ImportedFunction = {
+#[cfg(feature = "import")]
+ImportedFunction : bril_rs::ImportedFunction = {
     <n:Func> <a:Alias?> => {
-        ImportedFunction {
+        bril_rs::ImportedFunction {
             name: n,
             alias: a,
         }
     }
 }
 
+#[cfg(feature = "import")]
 Alias : String = {
     "as" <a:Func> => {
         a
@@ -151,9 +154,15 @@ ConstOps : ConstOps = {
     "const" => ConstOps::Const,
 }
 
+#[cfg(feature = "memory")]
 AbstractType : AbstractType = {
     <t:Ident> => AbstractType::Primitive(t),
     <p:Ident> "<" <t:AbstractType> ">" => AbstractType::Parameterized(p, Box::new(t)),
+}
+
+#[cfg(not(feature = "memory"))]
+AbstractType : AbstractType = {
+    <t:Ident> => AbstractType::Primitive(t),
 }
 
 // We can't match on const because of a reduce-reduce conflict
@@ -183,11 +192,32 @@ Label: String = {
     "."<i:Ident> => i,
 }
 
+#[cfg(all(feature = "char", feature = "float"))]
 Literal: Literal = {
     <n: Num> => Literal::Int(n),
     <b: Bool> => Literal::Bool(b),
     <f: Float> => Literal::Float(f),
     <c: Char> => Literal::Char(c),
+}
+
+#[cfg(all(not(feature = "char"), feature = "float"))]
+Literal: Literal = {
+    <n: Num> => Literal::Int(n),
+    <b: Bool> => Literal::Bool(b),
+    <f: Float> => Literal::Float(f),
+}
+
+#[cfg(all(feature = "char", not(feature = "float")))]
+Literal: Literal = {
+    <n: Num> => Literal::Int(n),
+    <b: Bool> => Literal::Bool(b),
+    <c: Char> => Literal::Char(c),
+}
+
+#[cfg(all(not(feature = "char"), not(feature = "float")))]
+Literal: Literal = {
+    <n: Num> => Literal::Int(n),
+    <b: Bool> => Literal::Bool(b),
 }
 
 Num: i64 = <s:INT_TOKEN> => i64::from_str(s).unwrap();
@@ -198,7 +228,8 @@ Bool: bool = {
 
 Float: f64 = <f:FLOAT_TOKEN> => f64::from_str(f).unwrap();
 
-Char: char = <c:CHAR_TOKEN> => {let c = c.trim_matches('\''); escape_control_chars(c).unwrap()};
+#[cfg(feature = "char")]
+Char: char = <c:CHAR_TOKEN> => {let c = c.trim_matches('\''); crate::escape_control_chars(c).unwrap()};
 
 // https://lalrpop.github.io/lalrpop/tutorial/006_macros.html
 Comma<T>: Vec<T> = { // (1)

@@ -10,7 +10,7 @@ test:
 .PHONY: install
 install:
 	cargo install --path . --example bril2txt
-	cargo install --path ./bril2json
+	cargo install --path ./bril2json --all-features
 	cargo install --path ./brild
 	cargo install --path ./rs2bril
 

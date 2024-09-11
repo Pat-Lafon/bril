@@ -13,12 +13,13 @@ keywords = ["compiler", "bril", "parser", "data-structures", "language"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap         = { version = "4.4", features = ["derive"] }
-thiserror    = "1.0"
+clap = { version = "4.4", features = ["derive"] }
+thiserror = "1.0"
 
 [dependencies.bril2json]
-version      = "0.1.0"
-path         = "../bril2json"
+version = "0.1.0"
+path = "../bril2json"
+features = ["import"]
 
 [dependencies.bril-rs]
 version = "0.1.0"

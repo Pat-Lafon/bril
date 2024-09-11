@@ -5,7 +5,28 @@
 // Tell the github workflow check to not format the generated rust program bril_grammar.rs
 #[doc(hidden)]
 #[rustfmt::skip]
-pub mod bril_grammar;
+
+use lalrpop_util::lalrpop_mod;
+lalrpop_mod!(
+    #[expect(clippy::no_effect_underscore_binding)]
+    #[expect(clippy::unnested_or_patterns)]
+    #[expect(clippy::trivially_copy_pass_by_ref)]
+    #[expect(clippy::missing_const_for_fn)]
+    #[expect(clippy::unnecessary_wraps)]
+    #[expect(clippy::redundant_pub_crate)]
+    #[expect(clippy::cloned_instead_of_copied)]
+    #[expect(clippy::too_many_lines)]
+    #[expect(clippy::use_self)]
+    #[expect(clippy::needless_pass_by_value)]
+    #[expect(clippy::cast_sign_loss)]
+    #[expect(clippy::must_use_candidate)]
+    #[expect(clippy::uninlined_format_args)]
+    #[expect(clippy::match_same_arms)]
+    #[expect(clippy::option_if_let_else)]
+    #[expect(clippy::extra_unused_lifetimes)]
+    bril_grammar
+);
+
 #[doc(hidden)]
 pub mod cli;
 use std::fs::File;
