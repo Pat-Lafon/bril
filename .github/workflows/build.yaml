@@ -85,3 +85,12 @@ jobs:
       - uses: TrueBrain/actions-flake8@master
         with:
           path: bril-txt
+
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check workflow files
+        uses: docker://rhysd/actionlint:latest
+        with:
+          args: -color
