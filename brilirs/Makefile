@@ -24,7 +24,7 @@ install:
 
 .PHONY: test
 test:
-	turnt -e brilirs $(TESTS)
+	turnt  -e brilirs $(TESTS)
 
 .PHONY: benchmark
 benchmark:

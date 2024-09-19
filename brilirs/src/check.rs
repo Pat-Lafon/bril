@@ -212,6 +212,7 @@ fn type_check_instruction<'a>(
       check_asmt_type(&Type::Bool, op_type)?;
       update_env(env, dest, op_type)
     }
+    #[cfg(feature = "char")]
     Instruction::Value {
       op: ValueOps::Ceq | ValueOps::Cge | ValueOps::Clt | ValueOps::Cgt | ValueOps::Cle,
       args,
@@ -229,6 +230,7 @@ fn type_check_instruction<'a>(
       check_asmt_type(&Type::Bool, op_type)?;
       update_env(env, dest, op_type)
     }
+    #[cfg(feature = "char")]
     Instruction::Value {
       op: ValueOps::Char2int,
       args,
@@ -245,6 +247,7 @@ fn type_check_instruction<'a>(
       check_asmt_type(&Type::Int, op_type)?;
       update_env(env, dest, op_type)
     }
+    #[cfg(feature = "char")]
     Instruction::Value {
       op: ValueOps::Int2char,
       args,
@@ -295,6 +298,7 @@ fn type_check_instruction<'a>(
 
       update_env(env, dest, op_type)
     }
+    #[cfg(feature = "ssa")]
     Instruction::Value {
       op: ValueOps::Phi,
       dest,

@@ -1,5 +1,6 @@
 use crate::basic_block::{BBFunction, BBProgram, BasicBlock};
 use crate::error::{InterpError, PositionalInterpError};
+#[cfg(feature = "char")]
 use bril2json::escape_control_chars;
 use bril_rs::Instruction;
 
@@ -170,6 +171,7 @@ enum Value {
   Int(i64),
   Bool(bool),
   Float(f64),
+  #[cfg(feature = "char")]
   Char(char),
   Pointer(Pointer),
   #[default]
@@ -199,6 +201,7 @@ impl fmt::Display for Value {
       Self::Float(v) if v.is_infinite() && v.is_sign_positive() => write!(f, "Infinity"),
       Self::Float(v) if v.is_infinite() && v.is_sign_negative() => write!(f, "-Infinity"),
       Self::Float(v) => write!(f, "{v:.17}"),
+      #[cfg(feature = "char")]
       Self::Char(c) => write!(f, "{c}"),
       Self::Pointer(p) => write!(f, "{p:?}"),
       Self::Uninitialized => unreachable!(),
@@ -214,6 +217,7 @@ fn optimized_val_output<T: std::io::Write>(out: &mut T, val: &Value) -> Result<(
     Value::Float(f) if f.is_infinite() && f.is_sign_negative() => out.write_all(b"-Infinity"),
     Value::Float(f) if f.is_nan() => out.write_all(b"NaN"),
     Value::Float(f) => out.write_all(format!("{f:.17}").as_bytes()),
+    #[cfg(feature = "char")]
     Value::Char(c) => {
       let buf = &mut [0_u8; 2];
       out.write_all(c.encode_utf8(buf).as_bytes())
@@ -229,6 +233,7 @@ impl From<&bril_rs::Literal> for Value {
       bril_rs::Literal::Int(i) => Self::Int(*i),
       bril_rs::Literal::Bool(b) => Self::Bool(*b),
       bril_rs::Literal::Float(f) => Self::Float(*f),
+      #[cfg(feature = "char")]
       bril_rs::Literal::Char(c) => Self::Char(*c),
     }
   }
@@ -240,6 +245,7 @@ impl From<bril_rs::Literal> for Value {
       bril_rs::Literal::Int(i) => Self::Int(i),
       bril_rs::Literal::Bool(b) => Self::Bool(b),
       bril_rs::Literal::Float(f) => Self::Float(f),
+      #[cfg(feature = "char")]
       bril_rs::Literal::Char(c) => Self::Char(c),
     }
   }
@@ -275,6 +281,7 @@ impl From<&Value> for f64 {
   }
 }
 
+#[cfg(feature = "char")]
 impl From<&Value> for char {
   fn from(value: &Value) -> Self {
     if let Value::Char(c) = value {
@@ -319,14 +326,19 @@ fn execute_value_op<T: std::io::Write>(
   op: bril_rs::ValueOps,
   dest: usize,
   args: &[usize],
-  labels: &[String],
+  #[cfg_attr(not(feature = "ssa"), allow(unused_variables))] labels: &[String],
   funcs: &[usize],
-  last_label: Option<&String>,
+  #[cfg_attr(not(feature = "ssa"), allow(unused_variables))] last_label: Option<&String>,
 ) -> Result<(), InterpError> {
+  #[cfg(feature = "ssa")]
+  use bril_rs::ValueOps::Phi;
   use bril_rs::ValueOps::{
-    Add, Alloc, And, Call, Ceq, Cge, Cgt, Char2int, Cle, Clt, Div, Eq, Fadd, Fdiv, Feq, Fge, Fgt,
-    Fle, Flt, Fmul, Fsub, Ge, Gt, Id, Int2char, Le, Load, Lt, Mul, Not, Or, Phi, PtrAdd, Sub,
+    Add, Alloc, And, Call, Div, Eq, Fadd, Fdiv, Feq, Fge, Fgt, Fle, Flt, Fmul, Fsub, Ge, Gt, Id,
+    Le, Load, Lt, Mul, Not, Or, PtrAdd, Sub,
   };
+
+  #[cfg(feature = "char")]
+  use bril_rs::ValueOps::{Ceq, Cge, Cgt, Char2int, Cle, Clt, Int2char};
   match op {
     Add => {
       let arg0 = get_arg::<i64>(&state.env, 0, args);
@@ -439,35 +451,42 @@ fn execute_value_op<T: std::io::Write>(
       let arg1 = get_arg::<f64>(&state.env, 1, args);
       state.env.set(dest, Value::Bool(arg0 >= arg1));
     }
+    #[cfg(feature = "char")]
     Ceq => {
       let arg0 = get_arg::<char>(&state.env, 0, args);
       let arg1 = get_arg::<char>(&state.env, 1, args);
       state.env.set(dest, Value::Bool(arg0 == arg1));
     }
+    #[cfg(feature = "char")]
     Clt => {
       let arg0 = get_arg::<char>(&state.env, 0, args);
       let arg1 = get_arg::<char>(&state.env, 1, args);
       state.env.set(dest, Value::Bool(arg0 < arg1));
     }
+    #[cfg(feature = "char")]
     Cgt => {
       let arg0 = get_arg::<char>(&state.env, 0, args);
       let arg1 = get_arg::<char>(&state.env, 1, args);
       state.env.set(dest, Value::Bool(arg0 > arg1));
     }
+    #[cfg(feature = "char")]
     Cle => {
       let arg0 = get_arg::<char>(&state.env, 0, args);
       let arg1 = get_arg::<char>(&state.env, 1, args);
       state.env.set(dest, Value::Bool(arg0 <= arg1));
     }
+    #[cfg(feature = "char")]
     Cge => {
       let arg0 = get_arg::<char>(&state.env, 0, args);
       let arg1 = get_arg::<char>(&state.env, 1, args);
       state.env.set(dest, Value::Bool(arg0 >= arg1));
     }
+    #[cfg(feature = "char")]
     Char2int => {
       let arg0 = get_arg::<char>(&state.env, 0, args);
       state.env.set(dest, Value::Int(u32::from(arg0).into()));
     }
+    #[cfg(feature = "char")]
     Int2char => {
       let arg0 = get_arg::<i64>(&state.env, 0, args);
 
@@ -489,6 +508,7 @@ fn execute_value_op<T: std::io::Write>(
 
       state.env.set(dest, result);
     }
+    #[cfg(feature = "ssa")]
     Phi => match last_label {
       None => return Err(InterpError::NoLastLabel),
       Some(last_label) => {
@@ -633,7 +653,9 @@ fn execute<'a, T: std::io::Write>(
               bril_rs::Literal::Float(f) => {
                 state.env.set(numified_code.dest.unwrap(), Value::Float(*f));
               }
-              bril_rs::Literal::Char(_) | bril_rs::Literal::Bool(_) => unreachable!(),
+              #[cfg(feature = "char")]
+              bril_rs::Literal::Char(_) => unreachable!(),
+              bril_rs::Literal::Bool(_) => unreachable!(),
             }
           } else {
             state
@@ -746,6 +768,7 @@ fn parse_args(
           Ok(())
         }
         bril_rs::Type::Pointer(..) => unreachable!(),
+        #[cfg(feature = "char")]
         bril_rs::Type::Char => escape_control_chars(inputs.get(index).unwrap().as_ref())
           .map_or_else(
             || Err(InterpError::NotOneChar),
