@@ -69,6 +69,7 @@ fn get_type<'a>(
     .ok_or_else(|| InterpError::VarUndefined(args[index].to_string()))
 }
 
+#[cfg(feature = "memory")]
 fn get_ptr_type(typ: &bril_rs::Type) -> Result<&bril_rs::Type, InterpError> {
   match typ {
     bril_rs::Type::Pointer(ptr_type) => Ok(ptr_type),
@@ -324,6 +325,7 @@ fn type_check_instruction<'a>(
 
       update_env(env, dest, op_type)
     }
+    #[cfg(feature = "memory")]
     Instruction::Value {
       op: ValueOps::Alloc,
       dest,
@@ -340,6 +342,7 @@ fn type_check_instruction<'a>(
       get_ptr_type(op_type)?;
       update_env(env, dest, op_type)
     }
+    #[cfg(feature = "memory")]
     Instruction::Value {
       op: ValueOps::Load,
       dest,
@@ -356,6 +359,7 @@ fn type_check_instruction<'a>(
       check_asmt_type(ptr_type, op_type)?;
       update_env(env, dest, op_type)
     }
+    #[cfg(feature = "memory")]
     Instruction::Value {
       op: ValueOps::PtrAdd,
       dest,
@@ -480,6 +484,7 @@ fn type_check_instruction<'a>(
         Ok(())
       }
     }
+    #[cfg(feature = "memory")]
     Instruction::Effect {
       op: EffectOps::Store,
       args,
@@ -494,6 +499,7 @@ fn type_check_instruction<'a>(
       let ty1 = get_type(env, 1, args)?;
       check_asmt_type(get_ptr_type(ty0)?, ty1)
     }
+    #[cfg(feature = "memory")]
     Instruction::Effect {
       op: EffectOps::Free,
       args,

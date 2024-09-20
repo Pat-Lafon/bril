@@ -31,12 +31,11 @@ itoa = "1.0"
 [dependencies.bril-rs]
 version = "0.1.0"
 path = "../bril-rs"
-features = ["memory", "position"]
+features = ["position"]
 
 [dependencies.bril2json]
 version = "0.1.0"
 path = "../bril-rs/bril2json"
-features = ["memory"]
 
 [profile.release]
 # this can shave off a few ms but doubles the build time so it's not really worth it
@@ -49,3 +48,4 @@ completions = ["clap_complete"]
 char = ["bril-rs/char", "bril2json/char"]
 ssa = ["bril-rs/ssa"]
 float = ["bril-rs/float", "bril2json/float"]
+memory = ["bril-rs/memory", "bril2json/memory"]

@@ -4,6 +4,7 @@ use crate::error::{InterpError, PositionalInterpError};
 use bril2json::escape_control_chars;
 use bril_rs::Instruction;
 
+#[cfg(feature = "memory")]
 use fxhash::FxHashMap;
 
 use mimalloc::MiMalloc;
@@ -88,12 +89,21 @@ impl Environment {
   }
 }
 
-// todo: This is basically a copy of the heap implement in brili and we could probably do something smarter. This currently isn't that worth it to optimize because most benchmarks do not use the memory extension nor do they run for very long. You (the reader in the future) may be working with bril programs that you would like to speed up that extensively use the bril memory extension. In that case, it would be worth seeing how to implement Heap without a map based memory. Maybe try to re-implement malloc for a large Vec<Value>?
+// todo: This is basically a copy of the heap implement in brili and we could
+// probably do something smarter. This currently isn't that worth it to optimize
+// because most benchmarks do not use the memory extension nor do they run for
+// very long. You (the reader in the future) may be working with bril programs
+// that you would like to speed up that extensively use the bril memory
+// extension. In that case, it would be worth seeing how to implement Heap
+// without a map based memory. Maybe try to re-implement malloc for a large
+// Vec<Value>?
+#[cfg(feature = "memory")]
 struct Heap {
   memory: FxHashMap<usize, Vec<Value>>,
   base_num_counter: usize,
 }
 
+#[cfg(feature = "memory")]
 impl Default for Heap {
   fn default() -> Self {
     Self {
@@ -103,6 +113,7 @@ impl Default for Heap {
   }
 }
 
+#[cfg(feature = "memory")]
 impl Heap {
   fn is_empty(&self) -> bool {
     self.memory.is_empty()
@@ -174,17 +185,20 @@ enum Value {
   Float(f64),
   #[cfg(feature = "char")]
   Char(char),
+  #[cfg(feature = "memory")]
   Pointer(Pointer),
   #[default]
   Uninitialized,
 }
 
+#[cfg(feature = "memory")]
 #[derive(Debug, Clone, PartialEq, Copy)]
 struct Pointer {
   base: usize,
   offset: i64,
 }
 
+#[cfg(feature = "memory")]
 impl Pointer {
   const fn add(&self, offset: i64) -> Self {
     Self {
@@ -207,6 +221,7 @@ impl fmt::Display for Value {
       Self::Float(v) => write!(f, "{v:.17}"),
       #[cfg(feature = "char")]
       Self::Char(c) => write!(f, "{c}"),
+      #[cfg(feature = "memory")]
       Self::Pointer(p) => write!(f, "{p:?}"),
       Self::Uninitialized => unreachable!(),
     }
@@ -230,6 +245,7 @@ fn optimized_val_output<T: std::io::Write>(out: &mut T, val: &Value) -> Result<(
       let buf = &mut [0_u8; 2];
       out.write_all(c.encode_utf8(buf).as_bytes())
     }
+    #[cfg(feature = "memory")]
     Value::Pointer(p) => out.write_all(format!("{p:?}").as_bytes()),
     Value::Uninitialized => unreachable!(),
   }
@@ -303,6 +319,7 @@ impl From<&Value> for char {
   }
 }
 
+#[cfg(feature = "memory")]
 impl<'a> From<&'a Value> for &'a Pointer {
   fn from(value: &'a Value) -> Self {
     if let Value::Pointer(p) = value {
@@ -343,13 +360,14 @@ fn execute_value_op<T: std::io::Write>(
 ) -> Result<(), InterpError> {
   #[cfg(feature = "ssa")]
   use bril_rs::ValueOps::Phi;
-  use bril_rs::ValueOps::{
-    Add, Alloc, And, Call, Div, Eq, Ge, Gt, Id, Le, Load, Lt, Mul, Not, Or, PtrAdd, Sub,
-  };
+  use bril_rs::ValueOps::{Add, And, Call, Div, Eq, Ge, Gt, Id, Le, Lt, Mul, Not, Or, Sub};
+  #[cfg(feature = "memory")]
+  use bril_rs::ValueOps::{Alloc, Load, PtrAdd};
   #[cfg(feature = "char")]
   use bril_rs::ValueOps::{Ceq, Cge, Cgt, Char2int, Cle, Clt, Int2char};
   #[cfg(feature = "float")]
   use bril_rs::ValueOps::{Fadd, Fdiv, Feq, Fge, Fgt, Fle, Flt, Fmul, Fsub};
+
   match op {
     Add => {
       let arg0 = get_arg::<i64>(&state.env, 0, args);
@@ -540,16 +558,19 @@ fn execute_value_op<T: std::io::Write>(
         state.env.set(dest, arg);
       }
     },
+    #[cfg(feature = "memory")]
     Alloc => {
       let arg0 = get_arg::<i64>(&state.env, 0, args);
       let res = state.heap.alloc(arg0)?;
       state.env.set(dest, res);
     }
+    #[cfg(feature = "memory")]
     Load => {
       let arg0 = get_arg::<&Pointer>(&state.env, 0, args);
       let res = state.heap.read(arg0)?;
       state.env.set(dest, *res);
     }
+    #[cfg(feature = "memory")]
     PtrAdd => {
       let arg0 = get_arg::<&Pointer>(&state.env, 0, args);
       let arg1 = get_arg::<i64>(&state.env, 1, args);
@@ -570,7 +591,10 @@ fn execute_effect_op<T: std::io::Write>(
   next_block_idx: &mut Option<usize>,
   result: &mut Option<Value>,
 ) -> Result<(), InterpError> {
-  use bril_rs::EffectOps::{Branch, Call, Free, Jump, Nop, Print, Return, Store};
+  use bril_rs::EffectOps::{Branch, Call, Jump, Nop, Print, Return};
+
+  #[cfg(feature = "memory")]
+  use bril_rs::EffectOps::{Free, Store};
 
   match op {
     Jump => {
@@ -614,11 +638,13 @@ fn execute_effect_op<T: std::io::Write>(
       execute(state, callee_func)?;
       state.env.pop_frame();
     }
+    #[cfg(feature = "memory")]
     Store => {
       let arg0 = get_arg::<&Pointer>(&state.env, 0, args);
       let arg1 = get_arg::<Value>(&state.env, 1, args);
       state.heap.write(arg0, arg1)?;
     }
+    #[cfg(feature = "memory")]
     Free => {
       let arg0 = get_arg::<&Pointer>(&state.env, 0, args);
       state.heap.free(arg0)?;
@@ -793,6 +819,7 @@ fn parse_args(
           };
           Ok(())
         }
+        #[cfg(feature = "memory")]
         bril_rs::Type::Pointer(..) => unreachable!(),
         #[cfg(feature = "char")]
         bril_rs::Type::Char => escape_control_chars(inputs.get(index).unwrap().as_ref())
@@ -812,16 +839,23 @@ fn parse_args(
 struct State<'a, T: std::io::Write> {
   prog: &'a BBProgram,
   env: Environment,
+  #[cfg(feature = "memory")]
   heap: Heap,
   out: T,
   instruction_count: usize,
 }
 
 impl<'a, T: std::io::Write> State<'a, T> {
-  const fn new(prog: &'a BBProgram, env: Environment, heap: Heap, out: T) -> Self {
+  const fn new(
+    prog: &'a BBProgram,
+    env: Environment,
+    #[cfg(feature = "memory")] heap: Heap,
+    out: T,
+  ) -> Self {
     Self {
       prog,
       env,
+      #[cfg(feature = "memory")]
       heap,
       out,
       instruction_count: 0,
@@ -847,15 +881,23 @@ pub fn execute_main<T: std::io::Write, U: std::io::Write>(
     .ok_or(InterpError::NoMainFunction)?;
 
   let mut env = Environment::new(main_func.num_of_vars);
+  #[cfg(feature = "memory")]
   let heap = Heap::default();
 
   env = parse_args(env, &main_func.args, &main_func.args_as_nums, input_args)
     .map_err(|e| e.add_pos(main_func.pos.clone()))?;
 
-  let mut state = State::new(prog, env, heap, out);
+  let mut state = State::new(
+    prog,
+    env,
+    #[cfg(feature = "memory")]
+    heap,
+    out,
+  );
 
   execute(&mut state, main_func)?;
 
+  #[cfg(feature = "memory")]
   if !state.heap.is_empty() {
     return Err(InterpError::MemLeak).map_err(|e| e.add_pos(main_func.pos.clone()));
   }
