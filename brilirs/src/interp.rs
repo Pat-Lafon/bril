@@ -170,6 +170,7 @@ fn get_arg<'a, T: From<&'a Value>>(vars: &'a Environment, index: usize, args: &[
 enum Value {
   Int(i64),
   Bool(bool),
+  #[cfg(feature = "float")]
   Float(f64),
   #[cfg(feature = "char")]
   Char(char),
@@ -198,8 +199,11 @@ impl fmt::Display for Value {
     match self {
       Self::Int(i) => write!(f, "{i}"),
       Self::Bool(b) => write!(f, "{b}"),
+      #[cfg(feature = "float")]
       Self::Float(v) if v.is_infinite() && v.is_sign_positive() => write!(f, "Infinity"),
+      #[cfg(feature = "float")]
       Self::Float(v) if v.is_infinite() && v.is_sign_negative() => write!(f, "-Infinity"),
+      #[cfg(feature = "float")]
       Self::Float(v) => write!(f, "{v:.17}"),
       #[cfg(feature = "char")]
       Self::Char(c) => write!(f, "{c}"),
@@ -213,9 +217,13 @@ fn optimized_val_output<T: std::io::Write>(out: &mut T, val: &Value) -> Result<(
   match val {
     Value::Int(i) => out.write_all(itoa::Buffer::new().format(*i).as_bytes()),
     Value::Bool(b) => out.write_all(if *b { b"true" } else { b"false" }),
+    #[cfg(feature = "float")]
     Value::Float(f) if f.is_infinite() && f.is_sign_positive() => out.write_all(b"Infinity"),
+    #[cfg(feature = "float")]
     Value::Float(f) if f.is_infinite() && f.is_sign_negative() => out.write_all(b"-Infinity"),
+    #[cfg(feature = "float")]
     Value::Float(f) if f.is_nan() => out.write_all(b"NaN"),
+    #[cfg(feature = "float")]
     Value::Float(f) => out.write_all(format!("{f:.17}").as_bytes()),
     #[cfg(feature = "char")]
     Value::Char(c) => {
@@ -232,6 +240,7 @@ impl From<&bril_rs::Literal> for Value {
     match l {
       bril_rs::Literal::Int(i) => Self::Int(*i),
       bril_rs::Literal::Bool(b) => Self::Bool(*b),
+      #[cfg(feature = "float")]
       bril_rs::Literal::Float(f) => Self::Float(*f),
       #[cfg(feature = "char")]
       bril_rs::Literal::Char(c) => Self::Char(*c),
@@ -244,6 +253,7 @@ impl From<bril_rs::Literal> for Value {
     match l {
       bril_rs::Literal::Int(i) => Self::Int(i),
       bril_rs::Literal::Bool(b) => Self::Bool(b),
+      #[cfg(feature = "float")]
       bril_rs::Literal::Float(f) => Self::Float(f),
       #[cfg(feature = "char")]
       bril_rs::Literal::Char(c) => Self::Char(c),
@@ -271,6 +281,7 @@ impl From<&Value> for bool {
   }
 }
 
+#[cfg(feature = "float")]
 impl From<&Value> for f64 {
   fn from(value: &Value) -> Self {
     if let Value::Float(f) = value {
@@ -326,19 +337,19 @@ fn execute_value_op<T: std::io::Write>(
   op: bril_rs::ValueOps,
   dest: usize,
   args: &[usize],
-  #[cfg_attr(not(feature = "ssa"), allow(unused_variables))] labels: &[String],
+  #[cfg_attr(not(feature = "ssa"), expect(unused_variables))] labels: &[String],
   funcs: &[usize],
-  #[cfg_attr(not(feature = "ssa"), allow(unused_variables))] last_label: Option<&String>,
+  #[cfg_attr(not(feature = "ssa"), expect(unused_variables))] last_label: Option<&String>,
 ) -> Result<(), InterpError> {
   #[cfg(feature = "ssa")]
   use bril_rs::ValueOps::Phi;
   use bril_rs::ValueOps::{
-    Add, Alloc, And, Call, Div, Eq, Fadd, Fdiv, Feq, Fge, Fgt, Fle, Flt, Fmul, Fsub, Ge, Gt, Id,
-    Le, Load, Lt, Mul, Not, Or, PtrAdd, Sub,
+    Add, Alloc, And, Call, Div, Eq, Ge, Gt, Id, Le, Load, Lt, Mul, Not, Or, PtrAdd, Sub,
   };
-
   #[cfg(feature = "char")]
   use bril_rs::ValueOps::{Ceq, Cge, Cgt, Char2int, Cle, Clt, Int2char};
+  #[cfg(feature = "float")]
+  use bril_rs::ValueOps::{Fadd, Fdiv, Feq, Fge, Fgt, Fle, Flt, Fmul, Fsub};
   match op {
     Add => {
       let arg0 = get_arg::<i64>(&state.env, 0, args);
@@ -406,46 +417,55 @@ fn execute_value_op<T: std::io::Write>(
       let src = get_arg::<Value>(&state.env, 0, args);
       state.env.set(dest, src);
     }
+    #[cfg(feature = "float")]
     Fadd => {
       let arg0 = get_arg::<f64>(&state.env, 0, args);
       let arg1 = get_arg::<f64>(&state.env, 1, args);
       state.env.set(dest, Value::Float(arg0 + arg1));
     }
+    #[cfg(feature = "float")]
     Fmul => {
       let arg0 = get_arg::<f64>(&state.env, 0, args);
       let arg1 = get_arg::<f64>(&state.env, 1, args);
       state.env.set(dest, Value::Float(arg0 * arg1));
     }
+    #[cfg(feature = "float")]
     Fsub => {
       let arg0 = get_arg::<f64>(&state.env, 0, args);
       let arg1 = get_arg::<f64>(&state.env, 1, args);
       state.env.set(dest, Value::Float(arg0 - arg1));
     }
+    #[cfg(feature = "float")]
     Fdiv => {
       let arg0 = get_arg::<f64>(&state.env, 0, args);
       let arg1 = get_arg::<f64>(&state.env, 1, args);
       state.env.set(dest, Value::Float(arg0 / arg1));
     }
+    #[cfg(feature = "float")]
     Feq => {
       let arg0 = get_arg::<f64>(&state.env, 0, args);
       let arg1 = get_arg::<f64>(&state.env, 1, args);
       state.env.set(dest, Value::Bool(arg0 == arg1));
     }
+    #[cfg(feature = "float")]
     Flt => {
       let arg0 = get_arg::<f64>(&state.env, 0, args);
       let arg1 = get_arg::<f64>(&state.env, 1, args);
       state.env.set(dest, Value::Bool(arg0 < arg1));
     }
+    #[cfg(feature = "float")]
     Fgt => {
       let arg0 = get_arg::<f64>(&state.env, 0, args);
       let arg1 = get_arg::<f64>(&state.env, 1, args);
       state.env.set(dest, Value::Bool(arg0 > arg1));
     }
+    #[cfg(feature = "float")]
     Fle => {
       let arg0 = get_arg::<f64>(&state.env, 0, args);
       let arg1 = get_arg::<f64>(&state.env, 1, args);
       state.env.set(dest, Value::Bool(arg0 <= arg1));
     }
+    #[cfg(feature = "float")]
     Fge => {
       let arg0 = get_arg::<f64>(&state.env, 0, args);
       let arg1 = get_arg::<f64>(&state.env, 1, args);
@@ -550,9 +570,8 @@ fn execute_effect_op<T: std::io::Write>(
   next_block_idx: &mut Option<usize>,
   result: &mut Option<Value>,
 ) -> Result<(), InterpError> {
-  use bril_rs::EffectOps::{
-    Branch, Call, Commit, Free, Guard, Jump, Nop, Print, Return, Speculate, Store,
-  };
+  use bril_rs::EffectOps::{Branch, Call, Free, Jump, Nop, Print, Return, Store};
+
   match op {
     Jump => {
       *next_block_idx = Some(curr_block.exit[0]);
@@ -604,7 +623,6 @@ fn execute_effect_op<T: std::io::Write>(
       let arg0 = get_arg::<&Pointer>(&state.env, 0, args);
       state.heap.free(arg0)?;
     }
-    Speculate | Commit | Guard => unimplemented!(),
   }
   Ok(())
 }
@@ -633,6 +651,7 @@ fn execute<'a, T: std::io::Write>(
 
     for (code, numified_code) in curr_instrs.iter().zip(curr_numified_instrs.iter()) {
       match code {
+        #[cfg_attr(not(feature = "float"), expect(unused_variables))]
         Instruction::Constant {
           op: bril_rs::ConstOps::Const,
           dest: _,
@@ -641,6 +660,7 @@ fn execute<'a, T: std::io::Write>(
           pos: _,
         } => {
           // Integer literals can be promoted to Floating point
+          #[cfg(feature = "float")]
           if const_type == &bril_rs::Type::Float {
             match value {
               #[expect(
@@ -662,6 +682,11 @@ fn execute<'a, T: std::io::Write>(
               .env
               .set(numified_code.dest.unwrap(), Value::from(value));
           };
+
+          #[cfg(not(feature = "float"))]
+          state
+            .env
+            .set(numified_code.dest.unwrap(), Value::from(value));
         }
         Instruction::Value {
           op,
@@ -755,6 +780,7 @@ fn parse_args(
           };
           Ok(())
         }
+        #[cfg(feature = "float")]
         bril_rs::Type::Float => {
           match inputs.get(index).unwrap().parse::<f64>() {
             Err(_) => {

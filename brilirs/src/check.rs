@@ -91,9 +91,13 @@ fn type_check_instruction<'a>(
       value,
       pos: _,
     } => {
+      #[cfg(feature = "float")]
       if !(const_type == &Type::Float && value.get_type() == Type::Int) {
         check_asmt_type(const_type, &value.get_type())?;
       }
+      #[cfg(not(feature = "float"))]
+      check_asmt_type(const_type, &value.get_type())?;
+
       update_env(env, dest, const_type)
     }
     Instruction::Value {
@@ -178,6 +182,7 @@ fn type_check_instruction<'a>(
       check_asmt_type(op_type, get_type(env, 0, args)?)?;
       update_env(env, dest, op_type)
     }
+    #[cfg(feature = "float")]
     Instruction::Value {
       op: ValueOps::Fadd | ValueOps::Fsub | ValueOps::Fmul | ValueOps::Fdiv,
       dest,
@@ -195,6 +200,7 @@ fn type_check_instruction<'a>(
       check_asmt_type(&Type::Float, op_type)?;
       update_env(env, dest, op_type)
     }
+    #[cfg(feature = "float")]
     Instruction::Value {
       op: ValueOps::Feq | ValueOps::Flt | ValueOps::Fgt | ValueOps::Fle | ValueOps::Fge,
       dest,
@@ -500,15 +506,6 @@ fn type_check_instruction<'a>(
       check_num_labels(0, labels)?;
       get_ptr_type(get_type(env, 0, args)?)?;
       Ok(())
-    }
-    Instruction::Effect {
-      op: EffectOps::Speculate | EffectOps::Guard | EffectOps::Commit,
-      args: _,
-      funcs: _,
-      labels: _,
-      pos: _,
-    } => {
-      unimplemented!()
     }
   }
 }
