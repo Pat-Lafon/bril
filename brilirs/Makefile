@@ -20,7 +20,7 @@ LONGBENCHMARKS := ../benchmarks/long/*.bril \
 
 .PHONY: install
 install:
-	RUSTFLAGS="-C target-cpu=native" cargo install --path .
+	RUSTFLAGS="-C target-cpu=native" cargo install --path . --features char,ssa,float,memory
 
 .PHONY: test
 test:
