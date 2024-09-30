@@ -1,5 +1,5 @@
 [envs.bril-rs]
-command = "cargo run --manifest-path ../../bril-rs/rs2bril/Cargo.toml < {filename} | cargo run --manifest-path ../../brilirs/Cargo.toml -- {args}"
+command = "cargo run --manifest-path ../../bril-rs/rs2bril/Cargo.toml < {filename} | cargo run --manifest-path ../../brilirs/Cargo.toml --features float,memory -- {args}"
 output.out = "-"
 
 [envs.rustc]

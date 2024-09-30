@@ -17,12 +17,12 @@ keywords = ["compiler", "bril", "parser", "data-structures", "language"]
 clap = { version = "4.5", features = ["derive"] }
 lalrpop-util = { version = "0.21", features = [
     "lexer",
-], git = "https://github.com/lalrpop/lalrpop.git" }
+], git = "https://github.com/pat-lafon/lalrpop.git", branch = "cfg2" }
 regex = "1.10"
 
 # Add a build-time dependency on the lalrpop library:
 [build-dependencies]
-lalrpop = { version = "0.21", git = "https://github.com/lalrpop/lalrpop.git" }
+lalrpop = { version = "0.21", git = "https://github.com/pat-lafon/lalrpop.git", branch = "cfg2" }
 
 [dependencies.bril-rs]
 version = "0.1.0"

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use crate::{Lines, ParsingArgs};
 use bril_rs::{AbstractProgram, AbstractFunction, AbstractArgument, AbstractCode, AbstractInstruction, ConstOps, AbstractType, Literal};
 
-/*
+/* todo: want to feature flag these as well
 
 #[cfg(feature = "import")]
 use bril_rs::{Import, ImportedFunction};
@@ -22,21 +22,19 @@ match {
     r"(\+|-)?[0-9]+" => INT_TOKEN, // int
     r"(\+|-)?(((([0-9]+\.?[0-9]*)|(\.[0-9]+))(E|e)(\+|-)?[0-9]+)|(([0-9]+\.[0-9]*)|(\.[0-9]+)))" => FLOAT_TOKEN, // https://stackoverflow.com/questions/12643009/regular-expression-for-floating-point-numbers
     r"(_|%|[[:alpha:]])(_|%|\.|[[:alnum:]])*" => IDENT_TOKEN,
+    // TODO: Want to feature flag this as well
     r"('.')|('\\[0abtnvfr]')" => CHAR_TOKEN,
     r#""[^"]*""# => STRING_TOKEN,
     _
 }
 
-#[cfg(feature = "import")]
 pub AbstractProgram : AbstractProgram = {
+    #[cfg(feature = "import")]
     <i: (<Imports>)*> <f :(<AbstractFunction>)*> => AbstractProgram {
         imports: i,
         functions : f,
-    }
-}
-
-#[cfg(not(feature = "import"))]
-pub AbstractProgram : AbstractProgram = {
+    },
+    #[cfg(not(feature = "import"))]
     <f :(<AbstractFunction>)*> => AbstractProgram {
         functions : f,
     }
@@ -154,15 +152,10 @@ ConstOps : ConstOps = {
     "const" => ConstOps::Const,
 }
 
-#[cfg(feature = "memory")]
 AbstractType : AbstractType = {
     <t:Ident> => AbstractType::Primitive(t),
+    #[cfg(feature = "memory")]
     <p:Ident> "<" <t:AbstractType> ">" => AbstractType::Parameterized(p, Box::new(t)),
-}
-
-#[cfg(not(feature = "memory"))]
-AbstractType : AbstractType = {
-    <t:Ident> => AbstractType::Primitive(t),
 }
 
 // We can't match on const because of a reduce-reduce conflict
@@ -192,32 +185,13 @@ Label: String = {
     "."<i:Ident> => i,
 }
 
-#[cfg(all(feature = "char", feature = "float"))]
 Literal: Literal = {
     <n: Num> => Literal::Int(n),
     <b: Bool> => Literal::Bool(b),
+    #[cfg(feature = "float")]
     <f: Float> => Literal::Float(f),
+    #[cfg(feature = "char")]
     <c: Char> => Literal::Char(c),
-}
-
-#[cfg(all(not(feature = "char"), feature = "float"))]
-Literal: Literal = {
-    <n: Num> => Literal::Int(n),
-    <b: Bool> => Literal::Bool(b),
-    <f: Float> => Literal::Float(f),
-}
-
-#[cfg(all(feature = "char", not(feature = "float")))]
-Literal: Literal = {
-    <n: Num> => Literal::Int(n),
-    <b: Bool> => Literal::Bool(b),
-    <c: Char> => Literal::Char(c),
-}
-
-#[cfg(all(not(feature = "char"), not(feature = "float")))]
-Literal: Literal = {
-    <n: Num> => Literal::Int(n),
-    <b: Bool> => Literal::Bool(b),
 }
 
 Num: i64 = <s:INT_TOKEN> => i64::from_str(s).unwrap();
@@ -226,6 +200,7 @@ Bool: bool = {
     "false" => false,
 }
 
+#[cfg(feature = "float")]
 Float: f64 = <f:FLOAT_TOKEN> => f64::from_str(f).unwrap();
 
 #[cfg(feature = "char")]
