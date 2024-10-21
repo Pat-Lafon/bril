@@ -1,10 +1,11 @@
 use crate::basic_block::{BBFunction, BBProgram, BasicBlock};
 use crate::error::{InterpError, PositionalInterpError};
+use crate::mmtk_bril;
 use bril2json::escape_control_chars;
 use bril_rs::Instruction;
 
 use crate::allocator::{optimized_val_output, BrilAllocator, BrilPointer, Value};
-use crate::basic_heap::{BasicHeap};
+use crate::basic_heap::BasicHeap;
 
 use std::cmp::max;
 
@@ -594,6 +595,8 @@ pub fn execute_main<T: std::io::Write, U: std::io::Write>(
 
   let mut env = Environment::new(main_func.num_of_vars);
   let heap = BasicHeap::default();
+
+  mmtk_bril::api::mmtk_init_test();
 
   env = parse_args(env, &main_func.args, &main_func.args_as_nums, input_args)
     .map_err(|e| e.add_pos(main_func.pos.clone()))?;

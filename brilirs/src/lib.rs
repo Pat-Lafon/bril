@@ -1,4 +1,4 @@
-#![feature(lazy_cell)]
+/* #![feature(lazy_cell)] */
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
 #![warn(missing_docs)]
 #![allow(clippy::float_cmp)]
@@ -24,7 +24,7 @@ pub mod cli;
 pub mod error;
 /// Provides ```interp::execute_main``` to execute [Program] that have been converted into [`BBProgram`]
 pub mod interp;
-mod mmtk;
+mod mmtk_bril;
 
 #[doc(hidden)]
 pub fn run_input<T: std::io::Write, U: std::io::Write>(

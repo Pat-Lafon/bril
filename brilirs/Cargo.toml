@@ -27,7 +27,7 @@ clap = { version = "4.4", features = ["derive"] }
 fxhash = "0.2"
 mimalloc = "0.1"
 itoa = "1.0"
-mmtk = "0.23"
+mmtk = "0.28"
 
 [dependencies.bril-rs]
 version = "0.1.0"
