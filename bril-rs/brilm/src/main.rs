@@ -1,14 +1,11 @@
+mod translator;
+
+use bril_rs::Program;
 use melior::{
-    Context,
-    dialect::{DialectRegistry, arith, func},
-    ir::{
-        attribute::{StringAttribute, TypeAttribute},
-        operation::OperationLike,
-        r#type::FunctionType,
-        *,
-    },
-    utility::register_all_dialects,
+    Context, dialect::DialectRegistry, ir::operation::OperationLike, utility::register_all_dialects,
 };
+use std::io::Read;
+use translator::translate_program;
 
 melior::dialect! {
     name: "bril",
@@ -16,7 +13,7 @@ melior::dialect! {
     include_directories: ["../../brilir/include"]
 }
 
-pub fn main() {
+fn main() {
     let registry = DialectRegistry::new();
     register_all_dialects(&registry);
 
@@ -24,39 +21,23 @@ pub fn main() {
     context.append_dialect_registry(&registry);
     context.load_all_available_dialects();
 
-    let location = Location::unknown(&context);
-    let module = Module::new(location);
+    // TODO: Proper dialect registration is gated on https://github.com/mlir-rs/melior/issues/718
+    // Once that issue is resolved, we can properly register the Bril dialect to avoid unregistered dialect warnings
+    context.set_allow_unregistered_dialects(true);
 
-    let index_type = Type::index(&context);
+    let mut buffer = String::new();
+    std::io::stdin()
+        .read_to_string(&mut buffer)
+        .expect("Failed to read input");
 
-    module.body().append_operation(func::func(
-        &context,
-        StringAttribute::new(&context, "add"),
-        TypeAttribute::new(
-            FunctionType::new(&context, &[index_type, index_type], &[index_type]).into(),
-        ),
-        {
-            let block = Block::new(&[(index_type, location), (index_type, location)]);
+    let program: Program = serde_json::from_str(&buffer).expect("Failed to parse Bril program");
+    let module = translate_program(&context, &program);
 
-            let sum = block
-                .append_operation(arith::addi(
-                    block.argument(0).unwrap().into(),
-                    block.argument(1).unwrap().into(),
-                    location,
-                ))
-                .result(0)
-                .unwrap();
-
-            block.append_operation(func::r#return(&[sum.into()], location));
-
-            let region = Region::new();
-            region.append_block(block);
-            region
-        },
-        &[],
-        location,
-    ));
-
-    assert!(module.as_operation().verify());
-    println!("blah")
+    let module_op = module.as_operation();
+    if module_op.verify() {
+        println!("{}", module_op);
+    } else {
+        eprintln!("Warning: Module verification failed");
+        eprintln!("{}", module_op);
+    }
 }

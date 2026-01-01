@@ -1,0 +1,35 @@
+{
+    "functions": [
+        {
+            "name": "add",
+            "args": [
+                {
+                    "name": "a",
+                    "type": "int"
+                },
+                {
+                    "name": "b",
+                    "type": "int"
+                }
+            ],
+            "type": "int",
+            "instrs": [
+                {
+                    "op": "add",
+                    "args": [
+                        "a",
+                        "b"
+                    ],
+                    "dest": "result",
+                    "type": "int"
+                },
+                {
+                    "op": "ret",
+                    "args": [
+                        "result"
+                    ]
+                }
+            ]
+        }
+    ]
+}
