@@ -13,17 +13,19 @@ build:
 
 clean:
 	cargo clean
-	rm rt.bc
-	rm tmp.ll
+	cd runtime && cargo clean
+	rm -f rt.bc
 
 .PHONY: rt
 rt:
-	cd runtime && cargo rustc --release -- --emit=llvm-bc && mv target/release/deps/runtime-*.bc ../rt.bc
+	# Touch to force cargo to regenerate
+	cd runtime && touch src/lib.rs && cargo rustc --lib --release -- --emit=llvm-bc
+	# Move newest .bc file to rt.bc
+	mv $$(ls -t runtime/target/release/deps/runtime-*.bc | head -1) rt.bc
 
 example:
 # bril2json < ../../benchmarks/mem/sieve.bril | cargo run -- -i 100
-# bril2json < ../../benchmarks/mixed/cholesky.bril | cargo run -- -i
-	bril2json < ../../test/interp/ssa/ssa-two-phi.bril | cargo run -- -i true
+	bril2json < ../../benchmarks/mixed/cholesky.bril | cargo run -- -i
 
 .PHONY: test
 test:

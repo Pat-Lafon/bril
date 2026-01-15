@@ -1,11 +1,7 @@
-/* use std::alloc::Layout;
-use std::alloc::{alloc, dealloc};
-use std::convert::TryInto;
-use std::mem::size_of; */
 #![no_std]
-#![no_main]
 
 use core::ffi::{CStr, c_char};
+use libc::{strtoll, strtod};
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _bril_print_int(i: i64) {
@@ -66,29 +62,19 @@ pub extern "C" fn _bril_print_end() {
 #[unsafe(no_mangle)]
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn _bril_parse_int(arg: *const c_char) -> i64 {
-    let c_str = unsafe { CStr::from_ptr(arg) };
-    let r_str = c_str.to_str().unwrap();
-    r_str.parse::<i64>().unwrap()
+    const DECIMAL_BASE: i32 = 10;
+    unsafe { strtoll(arg, core::ptr::null_mut(), DECIMAL_BASE) }
 }
 
 #[unsafe(no_mangle)]
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn _bril_parse_bool(arg: *const c_char) -> bool {
     let c_str = unsafe { CStr::from_ptr(arg) };
-    let r_str = c_str.to_str().unwrap();
-    r_str.parse::<bool>().unwrap()
+    c_str.to_bytes() == b"true"
 }
 
 #[unsafe(no_mangle)]
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn _bril_parse_float(arg: *const c_char) -> f64 {
-    let c_str = unsafe { CStr::from_ptr(arg) };
-    let r_str = c_str.to_str().unwrap();
-    r_str.parse::<f64>().unwrap()
-}
-
-#[cfg(not(test))]
-#[panic_handler]
-fn my_panic(_info: &core::panic::PanicInfo) -> ! {
-    loop {}
+    unsafe { strtod(arg, core::ptr::null_mut()) }
 }
