@@ -1,8 +1,10 @@
+get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
+get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
+
 set(LIBS
-    MLIRArithDialect
+    ${dialect_libs}
+    ${conversion_libs}
     MLIROptLib
-    MLIRRegisterAllDialects
-    MLIRRegisterAllPasses
     MLIRBril
   )
 add_llvm_executable(bril-opt bril-opt.cpp)

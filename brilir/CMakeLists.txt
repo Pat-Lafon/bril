@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard to conform to")
 
 set(EXTERNAL_PROJECT_BUILD FALSE)
 find_package(MLIR REQUIRED CONFIG)
+find_package(nlohmann_json REQUIRED)
 
 # Define the default argument to use by `lit` when testing.
 set(LLVM_LIT_ARGS "-sv" CACHE STRING "Default options for lit")
@@ -30,6 +31,7 @@ include_directories(${LLVM_INCLUDE_DIRS})
 include_directories(${MLIR_INCLUDE_DIRS})
 include_directories(${PROJECT_SOURCE_DIR}/include)
 include_directories(${PROJECT_BINARY_DIR}/include)
+include_directories(${nlohmann_json_INCLUDE_DIRS})
 link_directories(${LLVM_BUILD_LIBRARY_DIR})
 add_definitions(${LLVM_DEFINITIONS})
 

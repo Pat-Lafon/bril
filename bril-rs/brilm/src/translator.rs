@@ -60,15 +60,30 @@ fn translate_function<'c>(context: &'c Context, func: &Function) -> Operation<'c
         }
     }
 
+    let mut has_terminator = false;
     for code in &func.instrs {
         match code {
             Code::Label { .. } => {
                 unimplemented!()
             }
             Code::Instruction(instr) => {
+                // Track if this instruction is a terminator
+                if let Instruction::Effect { op, .. } = instr {
+                    if matches!(op, EffectOps::Return | EffectOps::Jump | EffectOps::Branch) {
+                        has_terminator = true;
+                    }
+                }
                 translate_instruction(context, instr, &block, &mut variable_map);
             }
         }
+    }
+
+    // Add implicit void return if no terminator present
+    if !has_terminator {
+        let ret_op = OperationBuilder::new("bril.ret", location)
+            .build()
+            .unwrap();
+        block.append_operation(ret_op);
     }
 
     let region = Region::new();
@@ -80,7 +95,7 @@ fn translate_function<'c>(context: &'c Context, func: &Function) -> Operation<'c
             StringAttribute::new(context, &func.name).into(),
         )])
         .add_attributes(&[(
-            Identifier::new(context, "type"),
+            Identifier::new(context, "function_type"),
             TypeAttribute::new(func_type.into()).into(),
         )])
         .add_regions([region])
@@ -171,16 +186,21 @@ fn translate_instruction<'c>(
 
         Instruction::Effect { op, args, .. } => match op {
             EffectOps::Print => {
-                for arg in args {
-                    let value = variable_map.get(arg).unwrap().clone();
-                    emit_print(context, value, block, location);
-                }
+                let print_args: Vec<_> = args
+                    .iter()
+                    .map(|arg| variable_map.get(arg).unwrap().clone())
+                    .collect();
+                let print_op = OperationBuilder::new("bril.print", location)
+                    .add_operands(&print_args)
+                    .build()
+                    .unwrap();
+                block.append_operation(print_op);
             }
             EffectOps::Return => {
                 let ret_op = if let Some(arg) = args.first() {
                     let value = variable_map.get(arg).unwrap().clone();
                     OperationBuilder::new("bril.ret", location)
-                        .add_operand(value)
+                        .add_operands(&[value])
                         .build()
                         .unwrap()
                 } else {
@@ -211,27 +231,3 @@ fn translate_bril_type<'c>(context: &'c Context, bril_ty: &BrilType) -> Type<'c>
     }
 }
 
-/// Emit a print operation that outputs a single value to stdout
-/// Uses a simple approach: emit LLVM calls to printf via melior's custom operation API
-fn emit_print<'c>(
-    _context: &'c Context,
-    value: Value<'c, 'c>,
-    _block: &Block<'c>,
-    _location: Location<'c>,
-) {
-    let _format_str = "%ld\n";
-    unimplemented!()
-    // Note: A complete implementation would need:
-    // 1. Global string constant creation in the module
-    // 2. LLVM function reference for printf
-    // 3. LLVM call operations with proper type conversions
-    //
-    // For now, this is a placeholder that captures the intent.
-    // The actual MLIR lowering pass (from bril dialect to LLVM)
-    // should handle printf codegen similar to brilir's BrilPasses.cpp
-
-    // This can be expanded once melior provides better support for:
-    // - Global constants
-    // - External function declarations
-    // - LLVM type system integration
-}

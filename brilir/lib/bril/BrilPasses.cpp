@@ -67,9 +67,9 @@ struct IdOpConversion : public OpConversionPattern<bril::IdOp> {
   matchAndRewrite(bril::IdOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const final {
     if (op.getResult().getType().isInteger()) {
-      auto const0 = arith::ConstantIntOp::create(
-          rewriter, op.getLoc(), 0,
-          op.getResult().getType().isInteger(64) ? 64 : 1);
+      auto intType = op.getResult().getType();
+      auto zeroAttr = rewriter.getIntegerAttr(intType, 0);
+      auto const0 = arith::ConstantOp::create(rewriter, op.getLoc(), zeroAttr);
       auto add0 =
           arith::AddIOp::create(rewriter, op.getLoc(), op.getInput(), const0);
       rewriter.replaceOp(op, add0.getResult());
@@ -160,7 +160,9 @@ struct NotOpConversion : public OpConversionPattern<bril::NotOp> {
     auto input = op.getOperand();
     auto loc = op.getLoc();
 
-    auto const1 = arith::ConstantIntOp::create(rewriter, loc, 1, 1);
+    auto i1Type = rewriter.getI1Type();
+    auto oneAttr = rewriter.getIntegerAttr(i1Type, 1);
+    auto const1 = arith::ConstantOp::create(rewriter, loc, oneAttr);
     auto xorOp = arith::XOrIOp::create(rewriter, loc, input, const1);
 
     rewriter.replaceOp(op, xorOp.getResult());
@@ -392,9 +394,10 @@ struct AllocOpConversion : public OpConversionPattern<bril::AllocOp> {
     ModuleOp parentModule = op->getParentOfType<ModuleOp>();
     auto mallocRef = getOrInsertMalloc(rewriter, parentModule);
 
-    auto sizeofType = arith::ConstantIntOp::create(
-        rewriter, loc,
-        (op.getType().getPointeeType().getIntOrFloatBitWidth() + 7) / 8, 64);
+    auto i64Type = rewriter.getI64Type();
+    auto sizeofAttr = rewriter.getIntegerAttr(
+        i64Type, (op.getType().getPointeeType().getIntOrFloatBitWidth() + 7) / 8);
+    auto sizeofType = arith::ConstantOp::create(rewriter, loc, sizeofAttr);
     auto sizeInBytes =
         arith::MulIOp::create(rewriter, loc, op.getSize(), sizeofType);
 

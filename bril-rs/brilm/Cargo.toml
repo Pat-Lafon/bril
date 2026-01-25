@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-melior = { version = "0.26.0", features = ["ods-dialects"] }
+melior = { git = "https://github.com/Pat-Lafon/melior", rev = "4c25e390ab1f184b1335d18df0832b0ff5bda820", features = ["ods-dialects"] }
+mlir-sys = "210"
 bril-rs = { path = "..", features = ["memory"] }
 serde_json = "1.0"
+
+[build-dependencies]
+melior-build = { git = "https://github.com/Pat-Lafon/melior", rev = "4c25e390ab1f184b1335d18df0832b0ff5bda820" }
