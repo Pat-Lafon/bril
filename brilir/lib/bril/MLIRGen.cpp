@@ -31,12 +31,12 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/JSON.h"
 #include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cassert>
 #include <cstdint>
 #include <cstdlib>
-#include <nlohmann/json_fwd.hpp>
 #include <unordered_map>
 #include <vector>
 
@@ -59,13 +59,25 @@ public:
     DEBUG = getenv("DEBUG") != nullptr;
   }
 
-  mlir::OwningOpRef<mlir::ModuleOp> mlirGen(nlohmann::json &json) {
+  mlir::OwningOpRef<mlir::ModuleOp> mlirGen(llvm::json::Value &json) {
     if (DEBUG)
       llvm::errs() << "entering function mlirGen\n";
     // Create the module.
     theModule = mlir::ModuleOp::create(builder.getUnknownLoc());
 
-    for (auto &funcJson : json["functions"]) {
+    auto *jsonObj = json.getAsObject();
+    if (!jsonObj) {
+      llvm::errs() << "Expected JSON object at top level\n";
+      return nullptr;
+    }
+
+    auto *functions = jsonObj->getArray("functions");
+    if (!functions) {
+      llvm::errs() << "Expected 'functions' array\n";
+      return nullptr;
+    }
+
+    for (auto &funcJson : *functions) {
       labelToBlock.clear();
       blockList.clear();
       blockToLabel.clear();
@@ -106,17 +118,23 @@ private:
     return mlir::success();
   }
 
-  mlir::Type getType(const nlohmann::json &type) {
-    if (type == "int")
-      return builder.getIntegerType(64);
-    if (type == "bool")
-      return builder.getIntegerType(1);
-    if (type["ptr"] == "int")
-      return mlir::bril::PtrType::get(builder.getContext(),
-                                      builder.getIntegerType(64));
-    if (type["ptr"] == "bool")
-      return mlir::bril::PtrType::get(builder.getContext(),
-                                      builder.getIntegerType(1));
+  mlir::Type getType(const llvm::json::Value &type) {
+    if (auto str = type.getAsString()) {
+      if (*str == "int")
+        return builder.getIntegerType(64);
+      if (*str == "bool")
+        return builder.getIntegerType(1);
+    }
+    if (auto *obj = type.getAsObject()) {
+      if (auto ptr = obj->getString("ptr")) {
+        if (*ptr == "int")
+          return mlir::bril::PtrType::get(builder.getContext(),
+                                          builder.getIntegerType(64));
+        if (*ptr == "bool")
+          return mlir::bril::PtrType::get(builder.getContext(),
+                                          builder.getIntegerType(1));
+      }
+    }
     return nullptr;
   }
 
@@ -125,53 +143,72 @@ private:
     return "___generated_block_" + std::to_string(blockCounter++);
   }
 
-  std::vector<std::vector<nlohmann::json>>
-  splitBlocks(nlohmann::json &instrsJson) {
-    std::vector<std::vector<nlohmann::json>> blocks = {};
-    std::vector<nlohmann::json> currentBlock = {};
+  std::vector<std::vector<llvm::json::Value>>
+  splitBlocks(llvm::json::Array &instrsJson) {
+    std::vector<std::vector<llvm::json::Value>> blocks = {};
+    std::vector<llvm::json::Value> currentBlock = {};
 
     for (auto &instrJson : instrsJson) {
-      if (instrJson.contains("op")) {
-        currentBlock.push_back(instrJson);
+      auto *instrObj = instrJson.getAsObject();
+      if (instrObj && instrObj->get("op")) {
+        currentBlock.push_back(std::move(instrJson));
 
-        auto op = instrJson["op"].get<std::string>();
+        auto op = instrObj->getString("op");
 
-        if (op == "br" || op == "jmp" || op == "ret") {
-          blocks.push_back(currentBlock);
+        if (op && (*op == "br" || *op == "jmp" || *op == "ret")) {
+          blocks.push_back(std::move(currentBlock));
           currentBlock = {};
         }
       } else {
         if (!currentBlock.empty()) {
-          blocks.push_back(currentBlock);
+          blocks.push_back(std::move(currentBlock));
         }
 
-        currentBlock = {instrJson};
+        currentBlock = {std::move(instrJson)};
       }
     }
 
     if (!currentBlock.empty()) {
-      blocks.push_back(currentBlock);
+      blocks.push_back(std::move(currentBlock));
     }
 
     return blocks;
   }
 
-  llvm::LogicalResult mlirGenFunction(nlohmann::json &funcJson) {
-    if (DEBUG)
-      llvm::errs() << "entering function mlirGenFunction "
-                   << funcJson["name"].get<std::string>() << "\n";
+  llvm::LogicalResult mlirGenFunction(llvm::json::Value &funcJsonVal) {
+    auto *funcJson = funcJsonVal.getAsObject();
+    if (!funcJson) {
+      llvm::errs() << "Expected function to be an object\n";
+      return llvm::failure();
+    }
 
-    auto funcName = funcJson["name"].get<std::string>();
+    auto funcNameOpt = funcJson->getString("name");
+    if (!funcNameOpt) {
+      llvm::errs() << "Function missing 'name'\n";
+      return llvm::failure();
+    }
+    std::string funcName = funcNameOpt->str();
+
+    if (DEBUG)
+      llvm::errs() << "entering function mlirGenFunction " << funcName << "\n";
 
     mlir::SmallVector<mlir::Type, 4> argTypes = {};
-    for (auto &arg : funcJson["args"]) {
-      auto argType = getType(arg["type"]);
-      argTypes.push_back(argType);
+    if (auto *args = funcJson->getArray("args")) {
+      for (auto &arg : *args) {
+        auto *argObj = arg.getAsObject();
+        if (!argObj)
+          continue;
+        auto *typeVal = argObj->get("type");
+        if (!typeVal)
+          continue;
+        auto argType = getType(*typeVal);
+        argTypes.push_back(argType);
+      }
     }
 
     mlir::TypeRange returnTypes = {};
-    if (funcJson.contains("type")) {
-      returnTypes = {getType(funcJson["type"])};
+    if (auto *typeVal = funcJson->get("type")) {
+      returnTypes = {getType(*typeVal)};
     }
 
     builder.setInsertionPointToEnd(theModule.getBody());
@@ -180,174 +217,234 @@ private:
                                builder.getFunctionType(argTypes, returnTypes));
 
     auto &entryBlock = func.front();
-    for (auto nameValue :
-         llvm::zip(funcJson["args"], entryBlock.getArguments())) {
-      auto name = std::get<0>(nameValue)["name"].get<std::string>();
-      auto value = std::get<1>(nameValue);
+    if (auto *args = funcJson->getArray("args")) {
+      size_t idx = 0;
+      for (auto &arg : *args) {
+        auto *argObj = arg.getAsObject();
+        if (!argObj)
+          continue;
+        auto nameOpt = argObj->getString("name");
+        if (!nameOpt)
+          continue;
+        std::string name = nameOpt->str();
+        auto value = entryBlock.getArgument(idx++);
 
-      if (llvm::failed(declare(name, value))) {
-        func.emitError("failed to declare argument ") << name;
-        return llvm::failure();
+        if (llvm::failed(declare(name, value))) {
+          func.emitError("failed to declare argument ") << name;
+          return llvm::failure();
+        }
       }
     }
 
     builder.setInsertionPointToEnd(&entryBlock);
 
-    auto blocks = splitBlocks(funcJson["instrs"]);
+    auto *instrsArr = funcJson->getArray("instrs");
+    if (!instrsArr) {
+      llvm::errs() << "Function missing 'instrs'\n";
+      return llvm::failure();
+    }
+
+    auto blocks = splitBlocks(*instrsArr);
 
     bool firstBlock = true;
     for (auto &block : blocks) {
-      if (block.front().contains("label")) {
-        auto labelName = block.front()["label"].get<std::string>();
-        auto *mlirBlock = firstBlock ? &entryBlock : func.addBlock();
-        llvm::SmallVector<std::string, 4> blockArgNames;
+      if (block.empty())
+        continue;
 
-        for (auto &instr : block) {
-          // collect all block arguments from 'get' instructions
-          if (instr.contains("op") && instr["op"] == "get") {
-            auto blockArg = mlirBlock->addArgument(getType(instr["type"]),
-                                                   builder.getUnknownLoc());
-            blockArgNames.push_back(instr["dest"].get<std::string>());
-            if (llvm::failed(
-                    declare(instr["dest"].get<std::string>(), blockArg))) {
-              func.emitError("failed to declare block argument ");
-              return llvm::failure();
-            }
-          }
-        }
+      auto *firstInstr = block.front().getAsObject();
+      bool hasLabel = firstInstr && firstInstr->get("label");
 
-        labelToBlock[labelName] = BlockInfo{mlirBlock, blockArgNames, {}};
-        blockToLabel[mlirBlock] = labelName;
-
-        blockList.push_back(mlirBlock);
+      std::string labelName;
+      if (hasLabel) {
+        labelName = firstInstr->getString("label")->str();
       } else {
-        auto blockName = generateBlockName();
-        auto *mlirBlock = firstBlock ? &entryBlock : func.addBlock();
-        llvm::SmallVector<std::string, 4> blockArgNames;
+        labelName = generateBlockName();
+      }
 
-        for (auto &instr : block) {
-          // collect all block arguments from 'get' instructions
-          if (instr.contains("op") && instr["op"] == "get") {
-            auto blockArg = mlirBlock->addArgument(getType(instr["type"]),
-                                                   builder.getUnknownLoc());
-            blockArgNames.push_back(instr["dest"].get<std::string>());
-            if (llvm::failed(
-                    declare(instr["dest"].get<std::string>(), blockArg))) {
-              func.emitError("failed to declare block argument ");
-              return llvm::failure();
-            }
+      auto *mlirBlock = firstBlock ? &entryBlock : func.addBlock();
+      llvm::SmallVector<std::string, 4> blockArgNames;
+
+      for (auto &instr : block) {
+        auto *instrObj = instr.getAsObject();
+        if (!instrObj)
+          continue;
+        // collect all block arguments from 'get' instructions
+        auto opOpt = instrObj->getString("op");
+        if (opOpt && *opOpt == "get") {
+          auto *typeVal = instrObj->get("type");
+          if (!typeVal)
+            continue;
+          auto blockArg =
+              mlirBlock->addArgument(getType(*typeVal), builder.getUnknownLoc());
+          auto destOpt = instrObj->getString("dest");
+          if (!destOpt)
+            continue;
+          std::string destName = destOpt->str();
+          blockArgNames.push_back(destName);
+          if (llvm::failed(declare(destName, blockArg))) {
+            func.emitError("failed to declare block argument ");
+            return llvm::failure();
           }
         }
-
-        labelToBlock[blockName] = BlockInfo{mlirBlock, {}, {}};
-        blockToLabel[mlirBlock] = blockName;
-
-        block.insert(block.begin(),
-                     nlohmann::json{{"label", blockName}}); // add a label
-
-        blockList.push_back(mlirBlock);
       }
+
+      labelToBlock[labelName] = BlockInfo{mlirBlock, blockArgNames, {}};
+      blockToLabel[mlirBlock] = labelName;
+      blockList.push_back(mlirBlock);
+
+      // If block didn't have a label, add one to the first instruction
+      if (!hasLabel && !block.empty()) {
+        // We'll handle this by adding a label field when processing
+      }
+
       firstBlock = false;
     }
 
-    for (auto [blockIdx, block] : llvm::enumerate(blocks)) {
-      BlockInfo *blockInfo = nullptr;
-      if (block.front().contains("label")) {
-        auto labelName = block.front()["label"].get<std::string>();
-        if (!labelToBlock.count(labelName)) {
-          llvm::errs() << "Undefined label: " << labelName << "\n";
-          return llvm::failure();
-        }
-        blockInfo = &labelToBlock[labelName];
+    size_t blockIdx = 0;
+    for (auto &block : blocks) {
+      if (block.empty()) {
+        blockIdx++;
+        continue;
       }
+
+      BlockInfo *blockInfo = nullptr;
+      auto *firstInstr = block.front().getAsObject();
+      std::string labelName;
+
+      if (firstInstr && firstInstr->get("label")) {
+        labelName = firstInstr->getString("label")->str();
+      } else {
+        labelName = blockToLabel[blockList[blockIdx]];
+      }
+
+      if (!labelToBlock.count(labelName)) {
+        llvm::errs() << "Undefined label: " << labelName << "\n";
+        return llvm::failure();
+      }
+      blockInfo = &labelToBlock[labelName];
+
       builder.setInsertionPointToEnd(blockList[blockIdx]);
-      for (auto instr : block) {
+      for (auto &instr : block) {
         if (llvm::failed(mlirGenInstruction(instr, blockInfo))) {
           func.emitError("failed to generate instruction");
           return llvm::failure();
         }
       }
 
-      if ((block.back().contains("op") && block.back()["op"] != "br" &&
-           block.back()["op"] != "jmp" && block.back()["op"] != "ret") ||
-          block.back().contains("label")) {
+      // Check if block needs a terminator
+      bool needsTerminator = true;
+      if (!block.empty()) {
+        auto *lastInstr = block.back().getAsObject();
+        if (lastInstr) {
+          auto opOpt = lastInstr->getString("op");
+          if (opOpt && (*opOpt == "br" || *opOpt == "jmp" || *opOpt == "ret")) {
+            needsTerminator = false;
+          }
+        }
+      }
+
+      if (needsTerminator) {
         // create jmp to the next block if it exists
         if (blockIdx + 1 < blockList.size()) {
-          nlohmann::json jmpJson = {
-              {"labels", {blockToLabel[blockList[blockIdx + 1]]}},
-              {"op", "jmp"}};
-          if (llvm::failed(mlirGenJmp(jmpJson, blockInfo))) {
-            func.emitError("failed to generate jmp to next block");
-            return llvm::failure();
+          std::string targetLabel = blockToLabel[blockList[blockIdx + 1]];
+          auto &targetBlock = labelToBlock[targetLabel];
+
+          llvm::SmallVector<mlir::Value, 4> args = {};
+          if (blockInfo) {
+            for (auto &arg : targetBlock.blockArgs) {
+              if (!blockInfo->ssaSets.count(arg)) {
+                llvm::errs() << "Undefined variable in jmp args: " << arg
+                             << "\n";
+                return llvm::failure();
+              }
+              args.push_back(blockInfo->ssaSets.lookup(arg));
+            }
           }
+          JmpOp::create(builder, builder.getUnknownLoc(), args,
+                        targetBlock.block);
         } else {
           // otherwise just generate a dummy ret
-          if (!funcJson.contains("type") || funcJson["type"].contains("ptr")) {
+          auto *typeVal = funcJson->get("type");
+          if (!typeVal || (typeVal->getAsObject() &&
+                           typeVal->getAsObject()->get("ptr"))) {
             RetOp::create(builder, builder.getUnknownLoc(), mlir::Value{});
           } else {
             UndefOp undefOp = UndefOp::create(builder, builder.getUnknownLoc(),
-                                              getType(funcJson["type"]));
+                                              getType(*typeVal));
             RetOp::create(builder, builder.getUnknownLoc(),
                           undefOp.getResult());
           }
         }
       }
+
+      blockIdx++;
     }
 
     return llvm::success();
   }
 
-  llvm::LogicalResult mlirGenInstruction(nlohmann::json &instrJson,
+  llvm::LogicalResult mlirGenInstruction(llvm::json::Value &instrJsonVal,
                                          BlockInfo *blockInfo) {
+    auto *instrJson = instrJsonVal.getAsObject();
+    if (!instrJson) {
+      return llvm::success(); // Skip non-objects
+    }
+
     if (DEBUG)
       llvm::errs() << "entering function mlirGenInstruction "
-                   << instrJson.dump() << " " << blockInfo << "\n";
-    if (!instrJson.contains("op")) {
+                   << llvm::formatv("{0}", instrJsonVal) << " " << blockInfo
+                   << "\n";
+
+    if (!instrJson->get("op")) {
       // label instruction, already handled in block generation
       return llvm::success();
     }
 
-    auto op = instrJson["op"].get<std::string>();
+    auto opOpt = instrJson->getString("op");
+    if (!opOpt) {
+      return llvm::success();
+    }
+    std::string op = opOpt->str();
 
     if (op == "get") {
       // already handled in block generation
       return llvm::success();
     } else if (op == "const") {
-      return mlirGenConst(instrJson);
+      return mlirGenConst(instrJsonVal);
     } else if (op == "add" || op == "sub" || op == "mul" || op == "div" ||
                op == "eq" || op == "lt" || op == "gt" || op == "le" ||
                op == "ge" || op == "and" || op == "or") {
-      return mlirGenBinaryOp(instrJson);
+      return mlirGenBinaryOp(instrJsonVal);
     } else if (op == "undef") {
-      return mlirGenUndef(instrJson);
+      return mlirGenUndef(instrJsonVal);
     } else if (op == "id") {
-      return mlirGenId(instrJson);
+      return mlirGenId(instrJsonVal);
     } else if (op == "not") {
-      return mlirGenNot(instrJson);
+      return mlirGenNot(instrJsonVal);
     } else if (op == "br") {
-      return mlirGenBranch(instrJson, blockInfo);
+      return mlirGenBranch(instrJsonVal, blockInfo);
     } else if (op == "jmp") {
-      return mlirGenJmp(instrJson, blockInfo);
+      return mlirGenJmp(instrJsonVal, blockInfo);
     } else if (op == "ret") {
-      return mlirGenRet(instrJson);
+      return mlirGenRet(instrJsonVal);
     } else if (op == "set") {
-      return mlirGenSet(instrJson, blockInfo);
+      return mlirGenSet(instrJsonVal, blockInfo);
     } else if (op == "print") {
-      return mlirGenPrint(instrJson);
+      return mlirGenPrint(instrJsonVal);
     } else if (op == "nop") {
-      return mlirGenNop(instrJson);
+      return mlirGenNop(instrJsonVal);
     } else if (op == "call") {
-      return mlirGenCall(instrJson);
+      return mlirGenCall(instrJsonVal);
     } else if (op == "alloc") {
-      return mlirGenAlloc(instrJson);
+      return mlirGenAlloc(instrJsonVal);
     } else if (op == "load") {
-      return mlirGenLoad(instrJson);
+      return mlirGenLoad(instrJsonVal);
     } else if (op == "store") {
-      return mlirGenStore(instrJson);
+      return mlirGenStore(instrJsonVal);
     } else if (op == "free") {
-      return mlirGenFree(instrJson);
+      return mlirGenFree(instrJsonVal);
     } else if (op == "ptradd") {
-      return mlirGenPtrAdd(instrJson);
+      return mlirGenPtrAdd(instrJsonVal);
     } else {
       llvm::errs() << "Unhandled operation: " << op << "\n";
     }
@@ -355,20 +452,33 @@ private:
     return llvm::success();
   }
 
-  llvm::LogicalResult mlirGenConst(nlohmann::json &instrJson) {
+  llvm::LogicalResult mlirGenConst(llvm::json::Value &instrJsonVal) {
+    auto *instrJson = instrJsonVal.getAsObject();
     if (DEBUG)
-      llvm::errs() << "entering function mlirGenConst " << instrJson.dump()
-                   << "\n";
-    auto dest = instrJson["dest"].get<std::string>();
-    if (instrJson["type"] == "int") {
-      int64_t value = instrJson["value"].get<int64_t>();
+      llvm::errs() << "entering function mlirGenConst "
+                   << llvm::formatv("{0}", instrJsonVal) << "\n";
+
+    auto destOpt = instrJson->getString("dest");
+    if (!destOpt)
+      return mlir::failure();
+    std::string dest = destOpt->str();
+
+    auto typeOpt = instrJson->getString("type");
+    if (typeOpt && *typeOpt == "int") {
+      auto valueOpt = instrJson->getInteger("value");
+      if (!valueOpt)
+        return mlir::failure();
+      int64_t value = *valueOpt;
       auto constOp =
           ConstantOp::create(builder, builder.getUnknownLoc(), value);
       if (llvm::failed(declare(dest, constOp.getResult()))) {
         return mlir::failure();
       }
-    } else if (instrJson["type"] == "bool") {
-      bool value = instrJson["value"].get<bool>();
+    } else if (typeOpt && *typeOpt == "bool") {
+      auto valueOpt = instrJson->getBoolean("value");
+      if (!valueOpt)
+        return mlir::failure();
+      bool value = *valueOpt;
       auto constOp =
           ConstantOp::create(builder, builder.getUnknownLoc(), value);
       if (llvm::failed(declare(dest, constOp.getResult()))) {
@@ -380,26 +490,48 @@ private:
     return llvm::success();
   }
 
-  llvm::LogicalResult mlirGenUndef(nlohmann::json &instrJson) {
+  llvm::LogicalResult mlirGenUndef(llvm::json::Value &instrJsonVal) {
+    auto *instrJson = instrJsonVal.getAsObject();
     if (DEBUG)
-      llvm::errs() << "entering function mlirGenUndef " << instrJson.dump()
-                   << "\n";
-    auto dest = instrJson["dest"].get<std::string>();
-    auto undefOp = UndefOp::create(builder, builder.getUnknownLoc(),
-                                   getType(instrJson["type"]));
+      llvm::errs() << "entering function mlirGenUndef "
+                   << llvm::formatv("{0}", instrJsonVal) << "\n";
+
+    auto destOpt = instrJson->getString("dest");
+    if (!destOpt)
+      return mlir::failure();
+    std::string dest = destOpt->str();
+
+    auto *typeVal = instrJson->get("type");
+    if (!typeVal)
+      return mlir::failure();
+
+    auto undefOp =
+        UndefOp::create(builder, builder.getUnknownLoc(), getType(*typeVal));
     if (llvm::failed(declare(dest, undefOp.getResult()))) {
       return mlir::failure();
     }
     return llvm::success();
   }
 
-  llvm::LogicalResult mlirGenId(nlohmann::json &instrJson) {
+  llvm::LogicalResult mlirGenId(llvm::json::Value &instrJsonVal) {
+    auto *instrJson = instrJsonVal.getAsObject();
     if (DEBUG)
-      llvm::errs() << "entering function mlirGenId " << instrJson.dump()
-                   << "\n";
+      llvm::errs() << "entering function mlirGenId "
+                   << llvm::formatv("{0}", instrJsonVal) << "\n";
 
-    auto dest = instrJson["dest"].get<std::string>();
-    auto argName = instrJson["args"][0].get<std::string>();
+    auto destOpt = instrJson->getString("dest");
+    if (!destOpt)
+      return mlir::failure();
+    std::string dest = destOpt->str();
+
+    auto *argsArr = instrJson->getArray("args");
+    if (!argsArr || argsArr->empty())
+      return mlir::failure();
+
+    auto argNameOpt = (*argsArr)[0].getAsString();
+    if (!argNameOpt)
+      return mlir::failure();
+    std::string argName = argNameOpt->str();
 
     if (!symbolTable.count(argName)) {
       llvm::errs() << "Undefined variable in id operation: " << argName << "\n";
@@ -407,8 +539,12 @@ private:
     }
 
     auto arg = symbolTable[argName];
+    auto *typeVal = instrJson->get("type");
+    if (!typeVal)
+      return mlir::failure();
+
     auto idOp = IdOp::create(builder, builder.getUnknownLoc(),
-                             getType(instrJson["type"]), arg);
+                             getType(*typeVal), arg);
 
     if (llvm::failed(declare(dest, idOp.getResult()))) {
       llvm::errs() << "Failed to declare variable: " << dest << "\n";
@@ -418,12 +554,25 @@ private:
     return llvm::success();
   }
 
-  llvm::LogicalResult mlirGenNot(nlohmann::json &instrJson) {
+  llvm::LogicalResult mlirGenNot(llvm::json::Value &instrJsonVal) {
+    auto *instrJson = instrJsonVal.getAsObject();
     if (DEBUG)
-      llvm::errs() << "entering function mlirGenNot " << instrJson.dump()
-                   << "\n";
-    auto dest = instrJson["dest"].get<std::string>();
-    auto argName = instrJson["args"][0].get<std::string>();
+      llvm::errs() << "entering function mlirGenNot "
+                   << llvm::formatv("{0}", instrJsonVal) << "\n";
+
+    auto destOpt = instrJson->getString("dest");
+    if (!destOpt)
+      return mlir::failure();
+    std::string dest = destOpt->str();
+
+    auto *argsArr = instrJson->getArray("args");
+    if (!argsArr || argsArr->empty())
+      return mlir::failure();
+
+    auto argNameOpt = (*argsArr)[0].getAsString();
+    if (!argNameOpt)
+      return mlir::failure();
+    std::string argName = argNameOpt->str();
 
     if (!symbolTable.count(argName)) {
       llvm::errs() << "Undefined variable in not operation: " << argName
@@ -444,17 +593,26 @@ private:
     return llvm::success();
   }
 
-  llvm::LogicalResult mlirGenBranch(nlohmann::json &instrJson,
+  llvm::LogicalResult mlirGenBranch(llvm::json::Value &instrJsonVal,
                                     BlockInfo *blockInfo) {
+    auto *instrJson = instrJsonVal.getAsObject();
     if (DEBUG)
-      llvm::errs() << "entering function mlirGenBranch " << instrJson.dump()
-                   << " " << blockInfo << "\n";
+      llvm::errs() << "entering function mlirGenBranch "
+                   << llvm::formatv("{0}", instrJsonVal) << " " << blockInfo
+                   << "\n";
     if (!blockInfo) {
       llvm::errs() << "Branch operation on a block without BlockInfo\n";
       return mlir::failure();
     }
 
-    auto argName = instrJson["args"][0].get<std::string>();
+    auto *argsArr = instrJson->getArray("args");
+    if (!argsArr || argsArr->empty())
+      return mlir::failure();
+
+    auto argNameOpt = (*argsArr)[0].getAsString();
+    if (!argNameOpt)
+      return mlir::failure();
+    std::string argName = argNameOpt->str();
 
     if (!symbolTable.count(argName)) {
       llvm::errs() << "Undefined variable in branch operation: " << argName
@@ -464,8 +622,17 @@ private:
 
     auto arg = symbolTable[argName];
 
-    auto trueLabel = instrJson["labels"][0].get<std::string>();
-    auto falseLabel = instrJson["labels"][1].get<std::string>();
+    auto *labelsArr = instrJson->getArray("labels");
+    if (!labelsArr || labelsArr->size() < 2)
+      return mlir::failure();
+
+    auto trueLabelOpt = (*labelsArr)[0].getAsString();
+    auto falseLabelOpt = (*labelsArr)[1].getAsString();
+    if (!trueLabelOpt || !falseLabelOpt)
+      return mlir::failure();
+
+    std::string trueLabel = trueLabelOpt->str();
+    std::string falseLabel = falseLabelOpt->str();
 
     if (!labelToBlock.count(trueLabel) || !labelToBlock.count(falseLabel)) {
       llvm::errs() << "Undefined label in branch operation: " << trueLabel
@@ -473,28 +640,28 @@ private:
       return mlir::failure();
     }
 
-    auto trueBlock = labelToBlock[trueLabel];
-    auto falseBlock = labelToBlock[falseLabel];
+    auto &trueBlock = labelToBlock[trueLabel];
+    auto &falseBlock = labelToBlock[falseLabel];
 
     llvm::SmallVector<mlir::Value, 4> trueArgs = {};
     llvm::SmallVector<mlir::Value, 4> falseArgs = {};
 
-    for (auto &arg : trueBlock.blockArgs) {
-      if (!blockInfo->ssaSets.count(arg)) {
-        llvm::errs() << "Undefined variable in branch true args: " << arg
+    for (auto &argStr : trueBlock.blockArgs) {
+      if (!blockInfo->ssaSets.count(argStr)) {
+        llvm::errs() << "Undefined variable in branch true args: " << argStr
                      << "\n";
         return mlir::failure();
       }
-      trueArgs.push_back(blockInfo->ssaSets.lookup(arg));
+      trueArgs.push_back(blockInfo->ssaSets.lookup(argStr));
     }
 
-    for (auto &arg : falseBlock.blockArgs) {
-      if (!blockInfo->ssaSets.count(arg)) {
-        llvm::errs() << "Undefined variable in branch false args: " << arg
+    for (auto &argStr : falseBlock.blockArgs) {
+      if (!blockInfo->ssaSets.count(argStr)) {
+        llvm::errs() << "Undefined variable in branch false args: " << argStr
                      << "\n";
         return mlir::failure();
       }
-      falseArgs.push_back(blockInfo->ssaSets.lookup(arg));
+      falseArgs.push_back(blockInfo->ssaSets.lookup(argStr));
     }
 
     BrOp::create(builder, builder.getUnknownLoc(), arg, trueArgs, falseArgs,
@@ -503,28 +670,48 @@ private:
     return llvm::success();
   }
 
-  llvm::LogicalResult mlirGenCall(nlohmann::json &instrJson) {
+  llvm::LogicalResult mlirGenCall(llvm::json::Value &instrJsonVal) {
+    auto *instrJson = instrJsonVal.getAsObject();
     if (DEBUG)
-      llvm::errs() << "entering function mlirGenCall " << instrJson.dump()
-                   << "\n";
-    auto funcName = instrJson["funcs"][0].get<std::string>();
+      llvm::errs() << "entering function mlirGenCall "
+                   << llvm::formatv("{0}", instrJsonVal) << "\n";
 
-    auto args = instrJson["args"];
+    auto *funcsArr = instrJson->getArray("funcs");
+    if (!funcsArr || funcsArr->empty())
+      return mlir::failure();
+
+    auto funcNameOpt = (*funcsArr)[0].getAsString();
+    if (!funcNameOpt)
+      return mlir::failure();
+    std::string funcName = funcNameOpt->str();
 
     SmallVector<mlir::Value, 4> mlirArgs = {};
-    for (auto &argNameJson : args) {
-      auto argName = argNameJson.get<std::string>();
-      if (!symbolTable.count(argName)) {
-        llvm::errs() << "Undefined variable in call operation: " << argName
-                     << "\n";
-        return mlir::failure();
+    if (auto *argsArr = instrJson->getArray("args")) {
+      for (auto &argNameJson : *argsArr) {
+        auto argNameOpt = argNameJson.getAsString();
+        if (!argNameOpt)
+          continue;
+        std::string argName = argNameOpt->str();
+        if (!symbolTable.count(argName)) {
+          llvm::errs() << "Undefined variable in call operation: " << argName
+                       << "\n";
+          return mlir::failure();
+        }
+        mlirArgs.push_back(symbolTable[argName]);
       }
-      mlirArgs.push_back(symbolTable[argName]);
     }
 
-    if (instrJson.contains("dest")) {
-      auto dest = instrJson["dest"].get<std::string>();
-      auto type = getType(instrJson["type"]);
+    if (instrJson->get("dest")) {
+      auto destOpt = instrJson->getString("dest");
+      if (!destOpt)
+        return mlir::failure();
+      std::string dest = destOpt->str();
+
+      auto *typeVal = instrJson->get("type");
+      if (!typeVal)
+        return mlir::failure();
+      auto type = getType(*typeVal);
+
       auto callOp = CallOp::create(
           builder, builder.getUnknownLoc(), type,
           mlir::FlatSymbolRefAttr::get(builder.getContext(), funcName),
@@ -544,22 +731,29 @@ private:
     return llvm::success();
   }
 
-  llvm::LogicalResult mlirGenPrint(nlohmann::json &instrJson) {
+  llvm::LogicalResult mlirGenPrint(llvm::json::Value &instrJsonVal) {
+    auto *instrJson = instrJsonVal.getAsObject();
     if (DEBUG)
-      llvm::errs() << "entering function mlirGenPrint " << instrJson.dump()
-                   << "\n";
+      llvm::errs() << "entering function mlirGenPrint "
+                   << llvm::formatv("{0}", instrJsonVal) << "\n";
+
     SmallVector<mlir::Value, 4> args = {};
 
-    for (auto &argNameJson : instrJson["args"]) {
-      auto argName = argNameJson.get<std::string>();
+    if (auto *argsArr = instrJson->getArray("args")) {
+      for (auto &argNameJson : *argsArr) {
+        auto argNameOpt = argNameJson.getAsString();
+        if (!argNameOpt)
+          continue;
+        std::string argName = argNameOpt->str();
 
-      if (!symbolTable.count(argName)) {
-        llvm::errs() << "Undefined variable in print operation: " << argName
-                     << "\n";
-        return mlir::failure();
+        if (!symbolTable.count(argName)) {
+          llvm::errs() << "Undefined variable in print operation: " << argName
+                       << "\n";
+          return mlir::failure();
+        }
+
+        args.push_back(symbolTable[argName]);
       }
-
-      args.push_back(symbolTable[argName]);
     }
 
     PrintOp::create(builder, builder.getUnknownLoc(), args);
@@ -567,20 +761,26 @@ private:
     return llvm::success();
   }
 
-  llvm::LogicalResult mlirGenNop(nlohmann::json &instrJson) {
+  llvm::LogicalResult mlirGenNop(llvm::json::Value &instrJsonVal) {
     if (DEBUG)
-      llvm::errs() << "entering function mlirGenNop " << instrJson.dump()
-                   << "\n";
+      llvm::errs() << "entering function mlirGenNop "
+                   << llvm::formatv("{0}", instrJsonVal) << "\n";
     NopOp::create(builder, builder.getUnknownLoc());
     return llvm::success();
   }
 
-  llvm::LogicalResult mlirGenRet(nlohmann::json &instrJson) {
+  llvm::LogicalResult mlirGenRet(llvm::json::Value &instrJsonVal) {
+    auto *instrJson = instrJsonVal.getAsObject();
     if (DEBUG)
-      llvm::errs() << "entering function mlirGenRet " << instrJson.dump()
-                   << "\n";
-    if (instrJson.contains("args") && !instrJson["args"].empty()) {
-      auto argName = instrJson["args"][0].get<std::string>();
+      llvm::errs() << "entering function mlirGenRet "
+                   << llvm::formatv("{0}", instrJsonVal) << "\n";
+
+    auto *argsArr = instrJson->getArray("args");
+    if (argsArr && !argsArr->empty()) {
+      auto argNameOpt = (*argsArr)[0].getAsString();
+      if (!argNameOpt)
+        return mlir::failure();
+      std::string argName = argNameOpt->str();
 
       if (!symbolTable.count(argName)) {
         llvm::errs() << "Undefined variable in ret operation: " << argName
@@ -598,13 +798,22 @@ private:
     return llvm::success();
   }
 
-  llvm::LogicalResult mlirGenJmp(nlohmann::json &instrJson,
+  llvm::LogicalResult mlirGenJmp(llvm::json::Value &instrJsonVal,
                                  BlockInfo *blockInfo) {
+    auto *instrJson = instrJsonVal.getAsObject();
     if (DEBUG)
-      llvm::errs() << "entering function mlirGenJmp " << instrJson.dump() << " "
-                   << blockInfo << "\n";
+      llvm::errs() << "entering function mlirGenJmp "
+                   << llvm::formatv("{0}", instrJsonVal) << " " << blockInfo
+                   << "\n";
 
-    auto targetLabel = instrJson["labels"][0].get<std::string>();
+    auto *labelsArr = instrJson->getArray("labels");
+    if (!labelsArr || labelsArr->empty())
+      return mlir::failure();
+
+    auto targetLabelOpt = (*labelsArr)[0].getAsString();
+    if (!targetLabelOpt)
+      return mlir::failure();
+    std::string targetLabel = targetLabelOpt->str();
 
     if (!labelToBlock.count(targetLabel)) {
       llvm::errs() << "Undefined label in jmp operation: " << targetLabel
@@ -612,7 +821,7 @@ private:
       return mlir::failure();
     }
 
-    auto targetBlock = labelToBlock[targetLabel];
+    auto &targetBlock = labelToBlock[targetLabel];
 
     llvm::SmallVector<mlir::Value, 4> args = {};
     if (blockInfo) {
@@ -630,13 +839,28 @@ private:
     return llvm::success();
   }
 
-  llvm::LogicalResult mlirGenBinaryOp(nlohmann::json &instrJson) {
+  llvm::LogicalResult mlirGenBinaryOp(llvm::json::Value &instrJsonVal) {
+    auto *instrJson = instrJsonVal.getAsObject();
     if (DEBUG)
-      llvm::errs() << "entering function mlirGenBinaryOp " << instrJson.dump()
-                   << "\n";
-    auto dest = instrJson["dest"].get<std::string>();
-    auto arg1Name = instrJson["args"][0].get<std::string>();
-    auto arg2Name = instrJson["args"][1].get<std::string>();
+      llvm::errs() << "entering function mlirGenBinaryOp "
+                   << llvm::formatv("{0}", instrJsonVal) << "\n";
+
+    auto destOpt = instrJson->getString("dest");
+    if (!destOpt)
+      return mlir::failure();
+    std::string dest = destOpt->str();
+
+    auto *argsArr = instrJson->getArray("args");
+    if (!argsArr || argsArr->size() < 2)
+      return mlir::failure();
+
+    auto arg1NameOpt = (*argsArr)[0].getAsString();
+    auto arg2NameOpt = (*argsArr)[1].getAsString();
+    if (!arg1NameOpt || !arg2NameOpt)
+      return mlir::failure();
+
+    std::string arg1Name = arg1NameOpt->str();
+    std::string arg2Name = arg2NameOpt->str();
 
     if (!symbolTable.count(arg1Name) || !symbolTable.count(arg2Name)) {
       llvm::errs() << "Undefined variable in binary operation: " << arg1Name
@@ -649,37 +873,42 @@ private:
 
     mlir::Value result;
 
-    if (instrJson["op"] == "add") {
+    auto opOpt = instrJson->getString("op");
+    if (!opOpt)
+      return mlir::failure();
+    std::string op = opOpt->str();
+
+    if (op == "add") {
       auto addOp = AddOp::create(builder, builder.getUnknownLoc(), arg1, arg2);
       result = addOp.getResult();
-    } else if (instrJson["op"] == "sub") {
+    } else if (op == "sub") {
       auto subOp = SubOp::create(builder, builder.getUnknownLoc(), arg1, arg2);
       result = subOp.getResult();
-    } else if (instrJson["op"] == "mul") {
+    } else if (op == "mul") {
       auto mulOp = MulOp::create(builder, builder.getUnknownLoc(), arg1, arg2);
       result = mulOp.getResult();
-    } else if (instrJson["op"] == "div") {
+    } else if (op == "div") {
       auto divOp = DivOp::create(builder, builder.getUnknownLoc(), arg1, arg2);
       result = divOp.getResult();
-    } else if (instrJson["op"] == "eq") {
+    } else if (op == "eq") {
       auto eqOp = EqOp::create(builder, builder.getUnknownLoc(), arg1, arg2);
       result = eqOp.getResult();
-    } else if (instrJson["op"] == "lt") {
+    } else if (op == "lt") {
       auto ltOp = LtOp::create(builder, builder.getUnknownLoc(), arg1, arg2);
       result = ltOp.getResult();
-    } else if (instrJson["op"] == "gt") {
+    } else if (op == "gt") {
       auto gtOp = GtOp::create(builder, builder.getUnknownLoc(), arg1, arg2);
       result = gtOp.getResult();
-    } else if (instrJson["op"] == "le") {
+    } else if (op == "le") {
       auto leOp = LeOp::create(builder, builder.getUnknownLoc(), arg1, arg2);
       result = leOp.getResult();
-    } else if (instrJson["op"] == "ge") {
+    } else if (op == "ge") {
       auto geOp = GeOp::create(builder, builder.getUnknownLoc(), arg1, arg2);
       result = geOp.getResult();
-    } else if (instrJson["op"] == "and") {
+    } else if (op == "and") {
       auto andOp = AndOp::create(builder, builder.getUnknownLoc(), arg1, arg2);
       result = andOp.getResult();
-    } else if (instrJson["op"] == "or") {
+    } else if (op == "or") {
       auto orOp = OrOp::create(builder, builder.getUnknownLoc(), arg1, arg2);
       result = orOp.getResult();
     }
@@ -692,28 +921,43 @@ private:
     return llvm::success();
   }
 
-  llvm::LogicalResult mlirGenSet(nlohmann::json &instrJson,
+  llvm::LogicalResult mlirGenSet(llvm::json::Value &instrJsonVal,
                                  BlockInfo *blockInfo) {
+    auto *instrJson = instrJsonVal.getAsObject();
     if (DEBUG)
-      llvm::errs() << "entering function mlirGenSet " << instrJson.dump() << " "
-                   << blockInfo << "\n";
+      llvm::errs() << "entering function mlirGenSet "
+                   << llvm::formatv("{0}", instrJsonVal) << " " << blockInfo
+                   << "\n";
     if (!blockInfo) {
       llvm::errs() << "Set operation on a block without BlockInfo\n";
       return mlir::failure();
     }
 
-    auto dest = instrJson["args"][0].get<std::string>();
-    auto src = instrJson["args"][1].get<std::string>();
+    auto *argsArr = instrJson->getArray("args");
+    if (!argsArr || argsArr->size() < 2)
+      return mlir::failure();
+
+    auto destOpt = (*argsArr)[0].getAsString();
+    auto srcOpt = (*argsArr)[1].getAsString();
+    if (!destOpt || !srcOpt)
+      return mlir::failure();
+
+    std::string dest = destOpt->str();
+    std::string src = srcOpt->str();
 
     mlir::Value arg;
 
     if (!symbolTable.count(src)) {
       auto destType = symbolTable[dest].getType();
-      nlohmann::json undefJson = {
-          {"dest", "___undef__" + src},
-          {"type", destType.isInteger(1) ? "bool" : "int"},
-          {"op", "undef"}};
-      mlirGenUndef(undefJson);
+      std::string typeStr = destType.isInteger(1) ? "bool" : "int";
+
+      llvm::json::Object undefJson;
+      undefJson["dest"] = "___undef__" + src;
+      undefJson["type"] = typeStr;
+      undefJson["op"] = "undef";
+
+      llvm::json::Value undefVal(std::move(undefJson));
+      (void)mlirGenUndef(undefVal);
       arg = symbolTable["___undef__" + src];
     } else {
       arg = symbolTable[src];
@@ -724,13 +968,25 @@ private:
     return llvm::success();
   }
 
-  llvm::LogicalResult mlirGenAlloc(nlohmann::json &instrJson) {
+  llvm::LogicalResult mlirGenAlloc(llvm::json::Value &instrJsonVal) {
+    auto *instrJson = instrJsonVal.getAsObject();
     if (DEBUG)
-      llvm::errs() << "entering function mlirGenAlloc " << instrJson.dump()
-                   << "\n";
+      llvm::errs() << "entering function mlirGenAlloc "
+                   << llvm::formatv("{0}", instrJsonVal) << "\n";
 
-    auto dest = instrJson["dest"].get<std::string>();
-    auto sizeName = instrJson["args"][0].get<std::string>();
+    auto destOpt = instrJson->getString("dest");
+    if (!destOpt)
+      return mlir::failure();
+    std::string dest = destOpt->str();
+
+    auto *argsArr = instrJson->getArray("args");
+    if (!argsArr || argsArr->empty())
+      return mlir::failure();
+
+    auto sizeNameOpt = (*argsArr)[0].getAsString();
+    if (!sizeNameOpt)
+      return mlir::failure();
+    std::string sizeName = sizeNameOpt->str();
 
     if (!symbolTable.count(sizeName)) {
       llvm::errs() << "Undefined variable in alloc operation: " << sizeName
@@ -739,7 +995,10 @@ private:
     }
     auto size = symbolTable[sizeName];
 
-    auto type = getType(instrJson["type"]);
+    auto *typeVal = instrJson->get("type");
+    if (!typeVal)
+      return mlir::failure();
+    auto type = getType(*typeVal);
 
     auto allocOp =
         AllocOp::create(builder, builder.getUnknownLoc(), type, size);
@@ -752,12 +1011,20 @@ private:
     return llvm::success();
   }
 
-  llvm::LogicalResult mlirGenFree(nlohmann::json &instrJson) {
+  llvm::LogicalResult mlirGenFree(llvm::json::Value &instrJsonVal) {
+    auto *instrJson = instrJsonVal.getAsObject();
     if (DEBUG)
-      llvm::errs() << "entering function mlirGenFree " << instrJson.dump()
-                   << "\n";
+      llvm::errs() << "entering function mlirGenFree "
+                   << llvm::formatv("{0}", instrJsonVal) << "\n";
 
-    auto ptrName = instrJson["args"][0].get<std::string>();
+    auto *argsArr = instrJson->getArray("args");
+    if (!argsArr || argsArr->empty())
+      return mlir::failure();
+
+    auto ptrNameOpt = (*argsArr)[0].getAsString();
+    if (!ptrNameOpt)
+      return mlir::failure();
+    std::string ptrName = ptrNameOpt->str();
 
     if (!symbolTable.count(ptrName)) {
       llvm::errs() << "Undefined variable in free operation: " << ptrName
@@ -771,14 +1038,30 @@ private:
     return llvm::success();
   }
 
-  llvm::LogicalResult mlirGenLoad(nlohmann::json &instrJson) {
+  llvm::LogicalResult mlirGenLoad(llvm::json::Value &instrJsonVal) {
+    auto *instrJson = instrJsonVal.getAsObject();
     if (DEBUG)
-      llvm::errs() << "entering function mlirGenLoad " << instrJson.dump()
-                   << "\n";
+      llvm::errs() << "entering function mlirGenLoad "
+                   << llvm::formatv("{0}", instrJsonVal) << "\n";
 
-    auto dest = instrJson["dest"].get<std::string>();
-    auto ptrName = instrJson["args"][0].get<std::string>();
-    auto type = getType(instrJson["type"]);
+    auto destOpt = instrJson->getString("dest");
+    if (!destOpt)
+      return mlir::failure();
+    std::string dest = destOpt->str();
+
+    auto *argsArr = instrJson->getArray("args");
+    if (!argsArr || argsArr->empty())
+      return mlir::failure();
+
+    auto ptrNameOpt = (*argsArr)[0].getAsString();
+    if (!ptrNameOpt)
+      return mlir::failure();
+    std::string ptrName = ptrNameOpt->str();
+
+    auto *typeVal = instrJson->get("type");
+    if (!typeVal)
+      return mlir::failure();
+    auto type = getType(*typeVal);
 
     if (!symbolTable.count(ptrName)) {
       llvm::errs() << "Undefined variable in load operation: " << ptrName
@@ -797,13 +1080,23 @@ private:
     return llvm::success();
   }
 
-  llvm::LogicalResult mlirGenStore(nlohmann::json &instrJson) {
+  llvm::LogicalResult mlirGenStore(llvm::json::Value &instrJsonVal) {
+    auto *instrJson = instrJsonVal.getAsObject();
     if (DEBUG)
-      llvm::errs() << "entering function mlirGenStore " << instrJson.dump()
-                   << "\n";
+      llvm::errs() << "entering function mlirGenStore "
+                   << llvm::formatv("{0}", instrJsonVal) << "\n";
 
-    auto ptrName = instrJson["args"][0].get<std::string>();
-    auto valueName = instrJson["args"][1].get<std::string>();
+    auto *argsArr = instrJson->getArray("args");
+    if (!argsArr || argsArr->size() < 2)
+      return mlir::failure();
+
+    auto ptrNameOpt = (*argsArr)[0].getAsString();
+    auto valueNameOpt = (*argsArr)[1].getAsString();
+    if (!ptrNameOpt || !valueNameOpt)
+      return mlir::failure();
+
+    std::string ptrName = ptrNameOpt->str();
+    std::string valueName = valueNameOpt->str();
 
     if (!symbolTable.count(ptrName)) {
       llvm::errs() << "Undefined variable in store operation: " << ptrName
@@ -824,15 +1117,33 @@ private:
     return llvm::success();
   }
 
-  llvm::LogicalResult mlirGenPtrAdd(nlohmann::json &instrJson) {
+  llvm::LogicalResult mlirGenPtrAdd(llvm::json::Value &instrJsonVal) {
+    auto *instrJson = instrJsonVal.getAsObject();
     if (DEBUG)
-      llvm::errs() << "entering function mlirGenPtrAdd " << instrJson.dump()
-                   << "\n";
+      llvm::errs() << "entering function mlirGenPtrAdd "
+                   << llvm::formatv("{0}", instrJsonVal) << "\n";
 
-    auto dest = instrJson["dest"].get<std::string>();
-    auto ptrName = instrJson["args"][0].get<std::string>();
-    auto offsetName = instrJson["args"][1].get<std::string>();
-    auto type = getType(instrJson["type"]);
+    auto destOpt = instrJson->getString("dest");
+    if (!destOpt)
+      return mlir::failure();
+    std::string dest = destOpt->str();
+
+    auto *argsArr = instrJson->getArray("args");
+    if (!argsArr || argsArr->size() < 2)
+      return mlir::failure();
+
+    auto ptrNameOpt = (*argsArr)[0].getAsString();
+    auto offsetNameOpt = (*argsArr)[1].getAsString();
+    if (!ptrNameOpt || !offsetNameOpt)
+      return mlir::failure();
+
+    std::string ptrName = ptrNameOpt->str();
+    std::string offsetName = offsetNameOpt->str();
+
+    auto *typeVal = instrJson->get("type");
+    if (!typeVal)
+      return mlir::failure();
+    auto type = getType(*typeVal);
 
     if (!symbolTable.count(ptrName)) {
       llvm::errs() << "Undefined variable in ptradd operation: " << ptrName
@@ -866,7 +1177,7 @@ namespace bril {
 
 // The public API for codegen.
 mlir::OwningOpRef<mlir::ModuleOp> mlirGen(mlir::MLIRContext &context,
-                                          nlohmann::json &json) {
+                                          llvm::json::Value &json) {
   return MLIRGenImpl(context).mlirGen(json);
 }
 

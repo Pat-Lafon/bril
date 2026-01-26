@@ -18,5 +18,5 @@ add_mlir_dialect_library(MLIRBril
         MLIRInferTypeOpInterface
         MLIRFuncDialect
         MLIRArithDialect
-        nlohmann_json::nlohmann_json
+        LLVMSupport
         )

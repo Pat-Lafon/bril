@@ -1,6 +1,6 @@
 #include "bril/MLIR2Bril.h"
 #include "bril/BrilDialect.h"
-#include <iostream>
+#include "llvm/Support/JSON.h"
 #include <llvm/Support/ErrorOr.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/SourceMgr.h>
@@ -8,8 +8,6 @@
 #include <mlir/IR/MLIRContext.h>
 #include <mlir/IR/OwningOpRef.h>
 #include <mlir/Parser/Parser.h>
-#include <nlohmann/json.hpp>
-#include <nlohmann/json_fwd.hpp>
 
 int main() {
   mlir::MLIRContext context;
@@ -33,9 +31,9 @@ int main() {
     return 1;
   }
 
-  nlohmann::json brilJson = bril::mlirToBril(*module);
+  llvm::json::Value brilJson = bril::mlirToBril(*module);
 
-  std::cout << brilJson.dump(2);
+  llvm::outs() << llvm::formatv("{0:2}", brilJson) << "\n";
 
   return 0;
 }

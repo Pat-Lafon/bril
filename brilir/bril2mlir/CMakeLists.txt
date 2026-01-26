@@ -1,8 +1,6 @@
-find_package(nlohmann_json 3.12.0 REQUIRED)
-
 set(LIBS
     MLIRBril
-    nlohmann_json::nlohmann_json
+    LLVMSupport
   )
 add_llvm_executable(bril2mlir bril2mlir.cpp)
 

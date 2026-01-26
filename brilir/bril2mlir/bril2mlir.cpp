@@ -2,10 +2,10 @@
 #include "bril/MLIRGen.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
+#include "llvm/Support/JSON.h"
 #include "llvm/Support/raw_ostream.h"
 #include <llvm/Support/ErrorOr.h>
 #include <llvm/Support/MemoryBuffer.h>
-#include <nlohmann/json.hpp>
 #include <system_error>
 
 int main() {
@@ -22,9 +22,14 @@ int main() {
 
   auto buffer = fileOrErr->get()->getBuffer();
 
-  nlohmann::json brilJson = nlohmann::json::parse(buffer);
+  llvm::Expected<llvm::json::Value> jsonOrErr = llvm::json::parse(buffer);
+  if (!jsonOrErr) {
+    llvm::errs() << "JSON parse error: "
+                 << llvm::toString(jsonOrErr.takeError()) << "\n";
+    return 1;
+  }
 
-  auto module = bril::mlirGen(context, brilJson);
+  auto module = bril::mlirGen(context, *jsonOrErr);
 
   if (!module) {
     llvm::errs() << "Failed to generate MLIR module\n";

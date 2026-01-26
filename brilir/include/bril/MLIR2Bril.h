@@ -1,4 +1,4 @@
-//===- MLIRGen.h - MLIR Generation from a Bril JSON
+//===- MLIR2Bril.h - Convert MLIR to Bril JSON
 //------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -7,19 +7,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares a simple interface to perform IR generation targeting MLIR
-// from a JSON representation for the Bril language.
+// This file declares a simple interface to convert MLIR Bril dialect
+// to a JSON representation for the Bril language.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef BRIL_MLIRGEN_H
-#define BRIL_MLIRGEN_H
+#ifndef BRIL_MLIR2BRIL_H
+#define BRIL_MLIR2BRIL_H
 
 #include "mlir/IR/BuiltinOps.h"
-#include <nlohmann/json.hpp>
+#include "llvm/Support/JSON.h"
 
 namespace bril {
-nlohmann::json mlirToBril(mlir::ModuleOp module);
+llvm::json::Value mlirToBril(mlir::ModuleOp module);
 } // namespace bril
 
-#endif // BRIL_MLIRGEN_H
+#endif // BRIL_MLIR2BRIL_H

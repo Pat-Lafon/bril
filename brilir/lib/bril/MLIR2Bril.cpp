@@ -1,6 +1,6 @@
 #include "bril/BrilOps.h"
 #include "bril/BrilTypes.h"
-#include "bril/MLIRGen.h"
+#include "bril/MLIR2Bril.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Diagnostics.h"
@@ -19,14 +19,12 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/JSON.h"
 #include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cassert>
 #include <cstdint>
 #include <cstdlib>
-#include <iostream>
-#include <nlohmann/json.hpp>
-#include <nlohmann/json_fwd.hpp>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -39,28 +37,26 @@ using llvm::isa;
 using llvm::SmallVector;
 using llvm::StringRef;
 
-using nlohmann::json;
-
 namespace {
 class MLIR2BrilImpl {
 public:
   MLIR2BrilImpl() { DEBUG = getenv("DEBUG") != nullptr; }
 
-  json brilGenModule(mlir::ModuleOp module) {
+  llvm::json::Value brilGenModule(mlir::ModuleOp module) {
     if (DEBUG)
       llvm::errs() << "entering function mlirGenModule\n";
 
-    json brilJson = {{"functions", nlohmann::json::array()}};
-    json functions = nlohmann::json::array();
+    llvm::json::Object brilJson;
+    llvm::json::Array functions;
 
     for (auto fn : module.getOps<mlir::bril::FuncOp>()) {
       auto funcJson = brilGenFunc(fn);
       functions.push_back(std::move(funcJson));
     }
 
-    brilJson["functions"] = functions;
+    brilJson["functions"] = std::move(functions);
 
-    return brilJson;
+    return llvm::json::Value(std::move(brilJson));
   }
 
 private:
@@ -68,17 +64,21 @@ private:
   llvm::DenseMap<mlir::Value, std::string> idMap;
   llvm::DenseMap<mlir::Block *, std::string> blockLabels;
 
-  json getTypeJson(mlir::Type type) {
+  llvm::json::Value getTypeJson(mlir::Type type) {
     if (type.isInteger(64))
       return "int";
     if (type.isInteger(1))
       return "bool";
     if (auto ptrType = dyn_cast<mlir::bril::PtrType>(type)) {
-      if (ptrType.getPointeeType().isInteger(64))
-        return {{"ptr", "int"}};
-      else if (ptrType.getPointeeType().isInteger(1))
-        return {{"ptr", "bool"}};
-      else {
+      if (ptrType.getPointeeType().isInteger(64)) {
+        llvm::json::Object obj;
+        obj["ptr"] = "int";
+        return llvm::json::Value(std::move(obj));
+      } else if (ptrType.getPointeeType().isInteger(1)) {
+        llvm::json::Object obj;
+        obj["ptr"] = "bool";
+        return llvm::json::Value(std::move(obj));
+      } else {
         llvm::errs() << "Unsupported pointee type in getTypeJson: "
                      << ptrType.getPointeeType() << "\n";
         abort();
@@ -104,12 +104,12 @@ private:
     return blockLabels[block];
   }
 
-  json brilGenOp(mlir::Operation &op) {
+  llvm::json::Value brilGenOp(mlir::Operation &op) {
     if (DEBUG)
       llvm::errs() << "entering function brilGenOp\n";
 
     if (auto constOp = dyn_cast<ConstantOp>(op)) {
-      json instrJson;
+      llvm::json::Object instrJson;
       instrJson["op"] = "const";
       instrJson["dest"] = getId(constOp.getResult());
       if (auto intAttr = dyn_cast<mlir::IntegerAttr>(constOp.getValue())) {
@@ -125,18 +125,18 @@ private:
           abort();
         }
       }
-      return instrJson;
+      return llvm::json::Value(std::move(instrJson));
     } else if (auto undefOp = dyn_cast<UndefOp>(op)) {
-      json instrJson;
+      llvm::json::Object instrJson;
       instrJson["op"] = "undef";
       instrJson["dest"] = getId(undefOp.getResult());
       instrJson["type"] = getTypeJson(undefOp.getResult().getType());
-      return instrJson;
+      return llvm::json::Value(std::move(instrJson));
     } else if (isa<AddOp>(op) || isa<SubOp>(op) || isa<MulOp>(op) ||
                isa<DivOp>(op) || isa<EqOp>(op) || isa<LtOp>(op) ||
                isa<GtOp>(op) || isa<LeOp>(op) || isa<GeOp>(op) ||
                isa<AndOp>(op) || isa<OrOp>(op)) {
-      json instrJson;
+      llvm::json::Object instrJson;
       if (isa<AddOp>(op))
         instrJson["op"] = "add";
       else if (isa<SubOp>(op))
@@ -161,45 +161,50 @@ private:
         instrJson["op"] = "or";
 
       instrJson["dest"] = getId(op.getResult(0));
-      instrJson["args"] = nlohmann::json::array();
+      llvm::json::Array args;
       for (auto operand : op.getOperands()) {
-        instrJson["args"].push_back(getId(operand));
+        args.push_back(getId(operand));
       }
+      instrJson["args"] = std::move(args);
       instrJson["type"] = getTypeJson(op.getResult(0).getType());
 
-      return instrJson;
+      return llvm::json::Value(std::move(instrJson));
     } else if (auto idOp = dyn_cast<IdOp>(op)) {
-      json instrJson;
+      llvm::json::Object instrJson;
       instrJson["op"] = "id";
       instrJson["dest"] = getId(idOp.getResult());
-      instrJson["args"] = nlohmann::json::array();
-      instrJson["args"].push_back(getId(idOp.getInput()));
+      llvm::json::Array args;
+      args.push_back(getId(idOp.getInput()));
+      instrJson["args"] = std::move(args);
       instrJson["type"] = getTypeJson(idOp.getResult().getType());
-      return instrJson;
+      return llvm::json::Value(std::move(instrJson));
     } else if (auto notOp = dyn_cast<NotOp>(op)) {
-      json instrJson;
+      llvm::json::Object instrJson;
       instrJson["op"] = "not";
       instrJson["dest"] = getId(notOp.getResult());
-      instrJson["args"] = nlohmann::json::array();
-      instrJson["args"].push_back(getId(notOp->getOperand(0)));
+      llvm::json::Array args;
+      args.push_back(getId(notOp->getOperand(0)));
+      instrJson["args"] = std::move(args);
       instrJson["type"] = getTypeJson(notOp.getResult().getType());
-      return instrJson;
+      return llvm::json::Value(std::move(instrJson));
     } else if (auto callOp = dyn_cast<CallOp>(op)) {
-      json instrJson;
+      llvm::json::Object instrJson;
       instrJson["op"] = "call";
-      instrJson["funcs"] = nlohmann::json::array();
-      instrJson["funcs"].push_back(callOp.getCallee().str());
-      instrJson["args"] = nlohmann::json::array();
+      llvm::json::Array funcs;
+      funcs.push_back(callOp.getCallee().str());
+      instrJson["funcs"] = std::move(funcs);
+      llvm::json::Array args;
       for (auto operand : callOp.getInputs()) {
-        instrJson["args"].push_back(getId(operand));
+        args.push_back(getId(operand));
       }
+      instrJson["args"] = std::move(args);
       if (!callOp.getResults().empty()) {
         instrJson["dest"] = getId(callOp.getResult(0));
         instrJson["type"] = getTypeJson(callOp.getResult(0).getType());
       }
-      return instrJson;
+      return llvm::json::Value(std::move(instrJson));
     } else if (auto brOp = dyn_cast<BrOp>(op)) {
-      json instrArray = nlohmann::json::array();
+      llvm::json::Array instrArray;
 
       auto trueBlock = brOp.getTrueTarget();
       auto falseBlock = brOp.getFalseTarget();
@@ -209,13 +214,14 @@ private:
         auto arg = std::get<0>(entry);
         auto value = std::get<1>(entry);
         // insert set operation
-        json setInstrJson;
+        llvm::json::Object setInstrJson;
         setInstrJson["op"] = "set";
-        setInstrJson["args"] = nlohmann::json::array();
-        setInstrJson["args"].push_back(getId(arg));
-        setInstrJson["args"].push_back(getId(value));
+        llvm::json::Array setArgs;
+        setArgs.push_back(getId(arg));
+        setArgs.push_back(getId(value));
+        setInstrJson["args"] = std::move(setArgs);
 
-        instrArray.push_back(setInstrJson);
+        instrArray.push_back(llvm::json::Value(std::move(setInstrJson)));
       }
 
       for (auto entry :
@@ -223,108 +229,120 @@ private:
         auto arg = std::get<0>(entry);
         auto value = std::get<1>(entry);
         // insert set operation
-        json setInstrJson;
+        llvm::json::Object setInstrJson;
         setInstrJson["op"] = "set";
-        setInstrJson["args"] = nlohmann::json::array();
-        setInstrJson["args"].push_back(getId(arg));
-        setInstrJson["args"].push_back(getId(value));
+        llvm::json::Array setArgs;
+        setArgs.push_back(getId(arg));
+        setArgs.push_back(getId(value));
+        setInstrJson["args"] = std::move(setArgs);
 
-        instrArray.push_back(setInstrJson);
+        instrArray.push_back(llvm::json::Value(std::move(setInstrJson)));
       }
 
-      json brInstrJson;
+      llvm::json::Object brInstrJson;
       brInstrJson["op"] = "br";
-      brInstrJson["args"] = nlohmann::json::array();
-      brInstrJson["args"].push_back(getId(brOp.getCondition()));
-      brInstrJson["labels"] = nlohmann::json::array();
-      brInstrJson["labels"].push_back(getBlockLabel(brOp.getTrueTarget()));
-      brInstrJson["labels"].push_back(getBlockLabel(brOp.getFalseTarget()));
+      llvm::json::Array brArgs;
+      brArgs.push_back(getId(brOp.getCondition()));
+      brInstrJson["args"] = std::move(brArgs);
+      llvm::json::Array labels;
+      labels.push_back(getBlockLabel(brOp.getTrueTarget()));
+      labels.push_back(getBlockLabel(brOp.getFalseTarget()));
+      brInstrJson["labels"] = std::move(labels);
 
-      instrArray.push_back(brInstrJson);
+      instrArray.push_back(llvm::json::Value(std::move(brInstrJson)));
 
-      return instrArray;
+      return llvm::json::Value(std::move(instrArray));
     } else if (auto jmpOp = dyn_cast<JmpOp>(op)) {
-      json instrArray = nlohmann::json::array();
+      llvm::json::Array instrArray;
 
       for (auto entry :
            llvm::zip(jmpOp.getTarget()->getArguments(), jmpOp.getArgs())) {
         auto arg = std::get<0>(entry);
         auto value = std::get<1>(entry);
         // insert set operation
-        json setInstrJson;
+        llvm::json::Object setInstrJson;
         setInstrJson["op"] = "set";
-        setInstrJson["args"] = nlohmann::json::array();
-        setInstrJson["args"].push_back(getId(arg));
-        setInstrJson["args"].push_back(getId(value));
+        llvm::json::Array setArgs;
+        setArgs.push_back(getId(arg));
+        setArgs.push_back(getId(value));
+        setInstrJson["args"] = std::move(setArgs);
 
-        instrArray.push_back(setInstrJson);
+        instrArray.push_back(llvm::json::Value(std::move(setInstrJson)));
       }
 
-      json jmpInstrJson;
+      llvm::json::Object jmpInstrJson;
       jmpInstrJson["op"] = "jmp";
-      jmpInstrJson["labels"] = nlohmann::json::array();
-      jmpInstrJson["labels"].push_back(getBlockLabel(jmpOp.getTarget()));
+      llvm::json::Array labels;
+      labels.push_back(getBlockLabel(jmpOp.getTarget()));
+      jmpInstrJson["labels"] = std::move(labels);
 
-      instrArray.push_back(jmpInstrJson);
-      return instrArray;
+      instrArray.push_back(llvm::json::Value(std::move(jmpInstrJson)));
+      return llvm::json::Value(std::move(instrArray));
     } else if (auto retOp = dyn_cast<RetOp>(op)) {
-      json instrJson;
+      llvm::json::Object instrJson;
       instrJson["op"] = "ret";
       if (retOp.getReturnValue()) {
-        instrJson["args"] = nlohmann::json::array();
-        instrJson["args"].push_back(getId(retOp.getReturnValue()));
+        llvm::json::Array args;
+        args.push_back(getId(retOp.getReturnValue()));
+        instrJson["args"] = std::move(args);
       }
-      return instrJson;
+      return llvm::json::Value(std::move(instrJson));
     } else if (auto printOp = dyn_cast<PrintOp>(op)) {
-      json instrJson;
+      llvm::json::Object instrJson;
       instrJson["op"] = "print";
-      instrJson["args"] = nlohmann::json::array();
+      llvm::json::Array args;
       for (auto operand : printOp.getValues()) {
-        instrJson["args"].push_back(getId(operand));
+        args.push_back(getId(operand));
       }
-      return instrJson;
+      instrJson["args"] = std::move(args);
+      return llvm::json::Value(std::move(instrJson));
     } else if (auto nopOp = dyn_cast<NopOp>(op)) {
-      json instrJson;
+      llvm::json::Object instrJson;
       instrJson["op"] = "nop";
-      return instrJson;
+      return llvm::json::Value(std::move(instrJson));
     } else if (auto allocOp = dyn_cast<AllocOp>(op)) {
-      json instrJson;
+      llvm::json::Object instrJson;
       instrJson["op"] = "alloc";
       instrJson["dest"] = getId(allocOp.getResult());
       instrJson["type"] = getTypeJson(allocOp.getResult().getType());
-      instrJson["args"] = nlohmann::json::array();
-      instrJson["args"].push_back(getId(allocOp.getSize()));
-      return instrJson;
+      llvm::json::Array args;
+      args.push_back(getId(allocOp.getSize()));
+      instrJson["args"] = std::move(args);
+      return llvm::json::Value(std::move(instrJson));
     } else if (auto freeOp = dyn_cast<FreeOp>(op)) {
-      json instrJson;
+      llvm::json::Object instrJson;
       instrJson["op"] = "free";
-      instrJson["args"] = nlohmann::json::array();
-      instrJson["args"].push_back(getId(freeOp.getPtr()));
-      return instrJson;
+      llvm::json::Array args;
+      args.push_back(getId(freeOp.getPtr()));
+      instrJson["args"] = std::move(args);
+      return llvm::json::Value(std::move(instrJson));
     } else if (auto loadOp = dyn_cast<LoadOp>(op)) {
-      json instrJson;
+      llvm::json::Object instrJson;
       instrJson["op"] = "load";
       instrJson["dest"] = getId(loadOp.getResult());
       instrJson["type"] = getTypeJson(loadOp.getResult().getType());
-      instrJson["args"] = nlohmann::json::array();
-      instrJson["args"].push_back(getId(loadOp.getPtr()));
-      return instrJson;
+      llvm::json::Array args;
+      args.push_back(getId(loadOp.getPtr()));
+      instrJson["args"] = std::move(args);
+      return llvm::json::Value(std::move(instrJson));
     } else if (auto storeOp = dyn_cast<StoreOp>(op)) {
-      json instrJson;
+      llvm::json::Object instrJson;
       instrJson["op"] = "store";
-      instrJson["args"] = nlohmann::json::array();
-      instrJson["args"].push_back(getId(storeOp.getPtr()));
-      instrJson["args"].push_back(getId(storeOp.getValue()));
-      return instrJson;
+      llvm::json::Array args;
+      args.push_back(getId(storeOp.getPtr()));
+      args.push_back(getId(storeOp.getValue()));
+      instrJson["args"] = std::move(args);
+      return llvm::json::Value(std::move(instrJson));
     } else if (auto ptrAddOp = dyn_cast<PtrAddOp>(op)) {
-      json instrJson;
+      llvm::json::Object instrJson;
       instrJson["op"] = "ptradd";
       instrJson["dest"] = getId(ptrAddOp.getResult());
       instrJson["type"] = getTypeJson(ptrAddOp.getResult().getType());
-      instrJson["args"] = nlohmann::json::array();
-      instrJson["args"].push_back(getId(ptrAddOp.getPtr()));
-      instrJson["args"].push_back(getId(ptrAddOp.getOffset()));
-      return instrJson;
+      llvm::json::Array args;
+      args.push_back(getId(ptrAddOp.getPtr()));
+      args.push_back(getId(ptrAddOp.getOffset()));
+      instrJson["args"] = std::move(args);
+      return llvm::json::Value(std::move(instrJson));
     }
 
     else {
@@ -332,40 +350,44 @@ private:
                    << op.getName().getStringRef() << "\n";
     }
     abort();
-    return {};
+    return llvm::json::Value(nullptr);
   }
 
-  json brilGenBlock(mlir::Block &block, bool entryBlock = false) {
+  llvm::json::Array brilGenBlock(mlir::Block &block, bool entryBlock = false) {
     if (DEBUG)
       llvm::errs() << "entering function brilGenBlock\n";
 
-    json blockJson = nlohmann::json::array();
+    llvm::json::Array blockJson;
 
-    blockJson.push_back({{"label", getBlockLabel(&block)}});
+    llvm::json::Object labelObj;
+    labelObj["label"] = getBlockLabel(&block);
+    blockJson.push_back(llvm::json::Value(std::move(labelObj)));
 
     if (!entryBlock) {
       for (auto arg : block.getArguments()) {
-        json getJson = {{"dest", getId(arg)},
-                        {"op", "get"},
-                        {"type", getTypeJson(arg.getType())}};
-        blockJson.push_back(getJson);
+        llvm::json::Object getJson;
+        getJson["dest"] = getId(arg);
+        getJson["op"] = "get";
+        getJson["type"] = getTypeJson(arg.getType());
+        blockJson.push_back(llvm::json::Value(std::move(getJson)));
       }
     }
 
     for (auto &op : block.getOperations()) {
       auto opJson = brilGenOp(op);
-      if (opJson.is_array()) {
-        for (auto &&instrJson : opJson) {
-          blockJson.push_back(instrJson);
+      if (auto *arr = opJson.getAsArray()) {
+        for (auto &instrJson : *arr) {
+          blockJson.push_back(std::move(instrJson));
         }
-      } else
-        blockJson.push_back(opJson);
+      } else {
+        blockJson.push_back(std::move(opJson));
+      }
     }
 
     return blockJson;
   }
 
-  json brilGenFunc(mlir::bril::FuncOp func) {
+  llvm::json::Value brilGenFunc(mlir::bril::FuncOp func) {
     if (DEBUG)
       llvm::errs() << "entering function brilGenFunc "
                    << func.getSymName().str() << "\n";
@@ -373,17 +395,17 @@ private:
     idMap.clear();
     blockLabels.clear();
 
-    json funcJson;
+    llvm::json::Object funcJson;
     funcJson["name"] = func.getSymName().str();
-    funcJson["args"] = nlohmann::json::array();
 
+    llvm::json::Array argsArr;
     for (auto arg : func.getArguments()) {
-      json argJson;
+      llvm::json::Object argJson;
       argJson["name"] = getId(arg);
       argJson["type"] = getTypeJson(arg.getType());
-
-      funcJson["args"].push_back(argJson);
+      argsArr.push_back(llvm::json::Value(std::move(argJson)));
     }
+    funcJson["args"] = std::move(argsArr);
 
     if (!func.getFunctionType().getResults().empty()) {
       auto retType = func.getFunctionType().getResult(0);
@@ -395,23 +417,25 @@ private:
       getBlockLabel(&block);
     }
 
+    llvm::json::Array instrsArr;
     bool entryBlock = true;
     for (auto &block : func.getBlocks()) {
       auto blockJson = brilGenBlock(block, entryBlock);
-      for (auto &&instrJson : blockJson) {
-        funcJson["instrs"].push_back(std::move(instrJson));
+      for (auto &instrJson : blockJson) {
+        instrsArr.push_back(std::move(instrJson));
       }
       entryBlock = false;
     }
+    funcJson["instrs"] = std::move(instrsArr);
 
-    return funcJson;
+    return llvm::json::Value(std::move(funcJson));
   }
 };
 
 } // namespace
 
 namespace bril {
-nlohmann::json mlirToBril(mlir::ModuleOp module) {
+llvm::json::Value mlirToBril(mlir::ModuleOp module) {
   return MLIR2BrilImpl().brilGenModule(module);
 }
 } // namespace bril
