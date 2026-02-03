@@ -1,3 +1,4 @@
+mod main_wrapper;
 mod translator;
 
 use bril_rs::Program;
