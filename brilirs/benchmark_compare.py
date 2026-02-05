@@ -155,6 +155,94 @@ def build_brilirs(brilirs_dir: Path) -> Optional[Path]:
     return binary_path
 
 
+def build_pgo(brilirs_dir: Path, benchmarks_dir: Path) -> Optional[Path]:
+    """Build PGO-optimized brilirs and return path to binary."""
+    # Check for cargo-pgo
+    if shutil.which("cargo-pgo") is None:
+        print("cargo-pgo not found. Install with: cargo install cargo-pgo", file=sys.stderr)
+        return None
+
+    print("  Building instrumented binary...", end=" ", flush=True)
+    result = subprocess.run(
+        ["cargo", "pgo", "build"],
+        cwd=brilirs_dir,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        print("FAILED")
+        print(result.stderr, file=sys.stderr)
+        return None
+    print("OK")
+
+    # Find instrumented binary (cargo-pgo puts it in target/<triple>/release/)
+    try:
+        find_result = subprocess.run(
+            ["find", str(brilirs_dir / "target"), "-name", "brilirs", "-type", "f", "-path", "*/release/*"],
+            capture_output=True, text=True, check=True
+        )
+        # Filter to get the one that's NOT in target/release (the instrumented one has a triple)
+        candidates = [p for p in find_result.stdout.strip().split('\n') if p]
+        instrumented_bin = next((p for p in candidates if "/release/brilirs" in p), candidates[0] if candidates else None)
+        if not instrumented_bin:
+            raise ValueError("No binary found")
+    except (subprocess.CalledProcessError, IndexError, ValueError, StopIteration):
+        print("Could not find instrumented binary", file=sys.stderr)
+        return None
+
+    # Profile directory used by cargo-pgo
+    profile_dir = brilirs_dir / "target" / "pgo-profiles"
+    profile_env = {
+        **os.environ,
+        "LLVM_PROFILE_FILE": str(profile_dir / "brilirs_%m_%p.profraw"),
+    }
+
+    # Run profiling benchmarks (multiple times for better profile data)
+    print("  Collecting profile data...", end=" ", flush=True)
+    profile_benchmarks = [
+        ("core", "ackermann", "3 6"),
+        ("core", "collatz", "100"),
+        ("core", "primes-between", "1 1000"),
+        ("mem", "quicksort", "100"),
+        ("mem", "sieve", "100"),
+        ("long", "function_call", "10"),
+    ]
+    for _ in range(3):  # Run multiple iterations for better coverage
+        for category, name, bench_args in profile_benchmarks:
+            bril_file = benchmarks_dir / category / f"{name}.bril"
+            if bril_file.exists():
+                with open(bril_file) as f:
+                    bril2json = subprocess.run(["bril2json"], stdin=f, capture_output=True)
+                subprocess.run(
+                    [instrumented_bin] + bench_args.split(),
+                    input=bril2json.stdout,
+                    capture_output=True,
+                    env=profile_env,
+                )
+    print("OK")
+
+    # Build optimized binary
+    print("  Building PGO-optimized binary...", end=" ", flush=True)
+    result = subprocess.run(
+        ["cargo", "pgo", "optimize"],
+        cwd=brilirs_dir,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        print("FAILED")
+        print(result.stderr, file=sys.stderr)
+        return None
+
+    binary_path = brilirs_dir / "target" / "release" / "brilirs"
+    if not binary_path.exists():
+        print("FAILED (binary not found)")
+        return None
+
+    print("OK")
+    return binary_path
+
+
 def parse_args_from_bril(bril_path: Path) -> str:
     """Extract ARGS from bril file comments."""
     try:
@@ -257,18 +345,21 @@ def run_comparison(baseline_bin: Path, current_bin: Path, json_path: Path,
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Benchmark brilirs against a baseline using git worktree",
+        description="Benchmark brilirs against a baseline",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   %(prog)s                          # Compare against HEAD~1
   %(prog)s --baseline main          # Compare against main branch
   %(prog)s --baseline abc123        # Compare against specific commit
+  %(prog)s --pgo                    # Compare release vs PGO-optimized
   %(prog)s --all                    # Run all benchmarks
   %(prog)s --category core float    # Run specific categories
         """)
     parser.add_argument("--baseline", type=str, default="HEAD~1",
                         help="Baseline commit/branch to compare against (default: HEAD~1)")
+    parser.add_argument("--pgo", action="store_true",
+                        help="Compare regular release vs PGO-optimized build")
     parser.add_argument("--min-runs", type=int, default=10, dest="min_runs",
                         help="Minimum benchmark runs; hyperfine may run more (default: 10)")
     parser.add_argument("--warmup", type=int, default=3,
@@ -287,23 +378,30 @@ Examples:
     if not check_requirements():
         sys.exit(1)
 
+    if args.pgo and shutil.which("cargo-pgo") is None:
+        print("--pgo requires cargo-pgo. Install with: cargo install cargo-pgo", file=sys.stderr)
+        sys.exit(1)
+
     script_dir = Path(__file__).parent.resolve()
     repo_root = script_dir.parent
     benchmarks_dir = repo_root / "benchmarks"
 
-    # Get commit info
-    baseline_msg = get_commit_message(args.baseline)
-    uncommitted = has_uncommitted_changes(script_dir)
-    current_ref = "working directory" if uncommitted else get_current_commit()
+    # Determine mode: PGO or git worktree
+    use_pgo_mode = args.pgo
+
+    if use_pgo_mode:
+        baseline_label = "release"
+        current_label = "PGO-optimized"
+    else:
+        baseline_label = f"{args.baseline} ({get_commit_message(args.baseline)})"
+        uncommitted = has_uncommitted_changes(script_dir)
+        current_label = "working directory" if uncommitted else f"{get_current_commit()} ({get_commit_message('HEAD')})"
 
     print("=" * 70)
     print("BRILIRS BENCHMARK COMPARISON")
     print("=" * 70)
-    print(f"Baseline: {args.baseline} ({baseline_msg})")
-    if uncommitted:
-        print(f"Current:  working directory (uncommitted changes)")
-    else:
-        print(f"Current:  {current_ref} ({get_commit_message('HEAD')})")
+    print(f"Baseline: {baseline_label}")
+    print(f"Current:  {current_label}")
     print(f"Min runs: {args.min_runs}, Warmup: {args.warmup}")
     print()
 
@@ -318,15 +416,34 @@ Examples:
     print(f"Benchmarks to run: {len(benchmarks)}")
     print()
 
-    # Setup worktree for baseline
-    worktree_path = repo_root / ".worktree-baseline"
-    print(f"Setting up baseline worktree...")
+    worktree_path = None
 
-    if not setup_worktree(args.baseline, worktree_path):
-        sys.exit(1)
+    if use_pgo_mode:
+        # PGO mode: build release first, then PGO
+        print("Building binaries...")
+        baseline_bin = build_brilirs(script_dir)
+        if not baseline_bin:
+            print("Build failed!", file=sys.stderr)
+            sys.exit(1)
 
-    try:
-        # Build both versions
+        # Copy baseline before PGO overwrites it
+        baseline_copy = Path(tempfile.mkdtemp()) / "brilirs-baseline"
+        shutil.copy2(baseline_bin, baseline_copy)
+        baseline_bin = baseline_copy
+
+        current_bin = build_pgo(script_dir, benchmarks_dir)
+        if not current_bin:
+            print("PGO build failed!", file=sys.stderr)
+            sys.exit(1)
+
+    else:
+        # Git worktree mode
+        worktree_path = repo_root / ".worktree-baseline"
+        print(f"Setting up baseline worktree...")
+
+        if not setup_worktree(args.baseline, worktree_path):
+            sys.exit(1)
+
         print("\nBuilding brilirs...")
         baseline_bin = build_brilirs(worktree_path / "brilirs")
         current_bin = build_brilirs(script_dir)
@@ -334,6 +451,8 @@ Examples:
         if not baseline_bin or not current_bin:
             print("Build failed!", file=sys.stderr)
             sys.exit(1)
+
+    try:
 
         # Run benchmarks
         print(f"\nRunning benchmarks...")
@@ -382,15 +501,15 @@ Examples:
                     print("failed")
 
     finally:
-        if not args.keep_worktree:
+        if worktree_path and not args.keep_worktree:
             print("\nCleaning up worktree...")
             cleanup_worktree(worktree_path)
 
     # Output JSON if requested
     if args.output:
         output_data = {
-            "baseline_ref": args.baseline,
-            "current_ref": current_ref,
+            "baseline_ref": baseline_label,
+            "current_ref": current_label,
             "runs": args.min_runs,
             "results": results,
         }

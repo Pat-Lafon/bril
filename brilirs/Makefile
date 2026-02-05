@@ -61,14 +61,10 @@ benchmark:
 release:
 	RUSTFLAGS="-C target-cpu=native" cargo build --release
 
-#https://doc.rust-lang.org/rustc/profile-guided-optimization.html
+# Profile-Guided Optimization (requires: cargo install cargo-pgo)
 .PHONY: pgo
 pgo:
-	RUSTFLAGS="-C target-cpu=native -Cprofile-use=$(shell pwd)/merged.profdata" cargo build --release
-
-.PHONY: pgo-install
-pgo-install:
-	RUSTFLAGS="-Cprofile-use=$(shell pwd)/merged.profdata" cargo install --path .
+	./pgo.sh
 
 # `make bench` or `make longbench` to get performance metrics
 # `make bench_rust.csv` to get the harmonic mean of each benchmark
