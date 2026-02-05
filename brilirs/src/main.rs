@@ -11,7 +11,13 @@ fn main() {
   let input: Box<dyn std::io::Read> = match &args.file {
     None => Box::new(std::io::stdin()),
 
-    Some(input_file) => Box::new(File::open(input_file).unwrap()),
+    Some(input_file) => match File::open(input_file) {
+      Ok(f) => Box::new(f),
+      Err(e) => {
+        eprintln!("error: {input_file}: {e}");
+        std::process::exit(1);
+      }
+    },
   };
 
   if let Err(e) = brilirs::run_input(
