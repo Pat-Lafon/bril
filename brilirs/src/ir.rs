@@ -87,6 +87,11 @@ pub enum FlatIR {
     dest: VarIndex,
     args: Vec<VarIndex>,
   },
+  /// Tail call with return value - can reuse env frame
+  TailCall {
+    func: FuncIndex,
+    args: Vec<VarIndex>,
+  },
   Nop,
   Jump {
     dest: LabelIndex,
@@ -101,6 +106,11 @@ pub enum FlatIR {
   },
   ReturnVoid,
   EffectfulCall {
+    func: FuncIndex,
+    args: Vec<VarIndex>,
+  },
+  /// Tail call without return value - can reuse env frame
+  TailCallVoid {
     func: FuncIndex,
     args: Vec<VarIndex>,
   },
