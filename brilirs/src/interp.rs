@@ -86,7 +86,7 @@ impl Environment {
   }
 
   // Update frame size for tail calls (callee may have different size than caller)
-  pub fn set_frame_size(&mut self, size: usize) {
+  pub const fn set_frame_size(&mut self, size: usize) {
     self.current_frame_size = size;
   }
 }
@@ -329,16 +329,17 @@ fn make_func_args(callee_func: &BBFunction, args: &[VarIndex], vars: &mut Enviro
 }
 
 // Sets up arguments for a tail call by reusing the current frame
-fn make_tail_call_args(callee_func: &BBFunction, args: &[VarIndex], vars: &mut Environment) {
-  // Collect arg values before overwriting (args may overlap with destinations)
-  let arg_values: Vec<Value> = args.iter().map(|arg_name| *vars.get(*arg_name)).collect();
-
-  // Update frame size to callee's size (important for subsequent calls from callee)
+fn make_tail_call_args(
+  callee_func: &BBFunction,
+  args: &[VarIndex],
+  vars: &mut Environment,
+  scratch: &mut Vec<Value>,
+) {
+  scratch.clear();
+  scratch.extend(args.iter().map(|arg_name| *vars.get(*arg_name)));
   vars.set_frame_size(callee_func.num_of_vars);
-
-  // Copy arguments into frame (frame already big enough due to max_frame_size)
-  for (val, dest) in arg_values.into_iter().zip(callee_func.args_as_nums.iter()) {
-    vars.set(*dest, val);
+  for (val, dest) in scratch.iter().zip(callee_func.args_as_nums.iter()) {
+    vars.set(*dest, *val);
   }
 }
 
@@ -615,7 +616,7 @@ fn execute<'a, T: std::io::Write>(
         }
         crate::ir::FlatIR::TailCall { func, args } => {
           let callee_func = state.prog.get(*func).unwrap();
-          make_tail_call_args(callee_func, args, &mut state.env);
+          make_tail_call_args(callee_func, args, &mut state.env, &mut state.arg_scratch);
           return execute(state, callee_func);
         }
         crate::ir::FlatIR::Nop => {}
@@ -649,7 +650,7 @@ fn execute<'a, T: std::io::Write>(
         }
         crate::ir::FlatIR::TailCallVoid { func, args } => {
           let callee_func = state.prog.get(*func).unwrap();
-          make_tail_call_args(callee_func, args, &mut state.env);
+          make_tail_call_args(callee_func, args, &mut state.env, &mut state.arg_scratch);
           return execute(state, callee_func);
         }
         crate::ir::FlatIR::PrintOne { arg } => {
@@ -790,16 +791,18 @@ struct State<'a, T: std::io::Write> {
   heap: Heap,
   out: T,
   instruction_count: usize,
+  arg_scratch: Vec<Value>,
 }
 
 impl<'a, T: std::io::Write> State<'a, T> {
-  const fn new(prog: &'a BBProgram, env: Environment, heap: Heap, out: T) -> Self {
+  fn new(prog: &'a BBProgram, env: Environment, heap: Heap, out: T) -> Self {
     Self {
       prog,
       env,
       heap,
       out,
       instruction_count: 0,
+      arg_scratch: Vec::with_capacity(prog.max_frame_size),
     }
   }
 }
