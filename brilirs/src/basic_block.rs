@@ -11,6 +11,9 @@ pub struct BBProgram {
   pub index_of_main: Option<FuncIndex>,
   #[doc(hidden)]
   pub func_index: Vec<BBFunction>,
+  /// Maximum frame size across all functions - used for pre-allocation
+  #[doc(hidden)]
+  pub max_frame_size: usize,
 }
 
 impl TryFrom<Program> for BBProgram {
@@ -45,9 +48,13 @@ impl BBProgram {
       .map(|func| BBFunction::new(func, &func_map))
       .collect::<Result<Vec<BBFunction>, InterpError>>()?;
 
+    // Compute max frame size across all functions for pre-allocation
+    let max_frame_size = func_index.iter().map(|f| f.num_of_vars).max().unwrap_or(0);
+
     let bb = Self {
       index_of_main: func_map.get("main").copied(),
       func_index,
+      max_frame_size,
     };
     if func_map.len() == num_funcs {
       Ok(bb)
@@ -70,6 +77,8 @@ pub struct BasicBlock {
   pub flat_instrs: Vec<FlatIR>,
   pub positions: Vec<Option<Position>>,
   pub exit: Vec<LabelIndex>,
+  /// Precomputed instruction count for this block (tail calls count as 2)
+  pub instruction_count: usize,
 }
 
 impl BasicBlock {
@@ -79,6 +88,7 @@ impl BasicBlock {
       flat_instrs: Vec::new(),
       positions: Vec::new(),
       exit: Vec::new(),
+      instruction_count: 0,
     }
   }
 }
@@ -150,6 +160,7 @@ impl BBFunction {
         bril_rs::Code::Label { label, .. } => {
           if (!curr_block.flat_instrs.is_empty() && blocks.is_empty()) || curr_block.label.is_some()
           {
+            curr_block.instruction_count = curr_block.flat_instrs.len();
             blocks.push(curr_block);
           }
           curr_block = BasicBlock::new();
@@ -157,7 +168,7 @@ impl BBFunction {
         }
         bril_rs::Code::Instruction(
           i @ bril_rs::Instruction::Effect {
-            op: bril_rs::EffectOps::Jump | bril_rs::EffectOps::Branch | bril_rs::EffectOps::Return,
+            op: bril_rs::EffectOps::Jump | bril_rs::EffectOps::Branch,
             ..
           },
         ) => {
@@ -166,6 +177,55 @@ impl BBFunction {
             curr_block
               .flat_instrs
               .push(FlatIR::new(i, func_map, &mut num_var_map, &label_map)?);
+            curr_block.instruction_count = curr_block.flat_instrs.len();
+            blocks.push(curr_block);
+          }
+          curr_block = BasicBlock::new();
+        }
+        // Handle Return separately to detect tail calls inline
+        bril_rs::Code::Instruction(
+          i @ bril_rs::Instruction::Effect {
+            op: bril_rs::EffectOps::Return,
+            ..
+          },
+        ) => {
+          if curr_block.label.is_some() || blocks.is_empty() {
+            let ret_ir = FlatIR::new(i.clone(), func_map, &mut num_var_map, &label_map)?;
+
+            // Check for tail call pattern: Call followed by Return
+            let is_tail_call = if let Some(prev) = curr_block.flat_instrs.last() {
+              match (prev, &ret_ir) {
+                (FlatIR::MultiArityCall { func, dest, args }, FlatIR::ReturnValue { arg })
+                  if dest == arg =>
+                {
+                  Some(FlatIR::TailCall {
+                    func: *func,
+                    args: args.clone(),
+                  })
+                }
+                (FlatIR::EffectfulCall { func, args }, FlatIR::ReturnVoid) => {
+                  Some(FlatIR::TailCallVoid {
+                    func: *func,
+                    args: args.clone(),
+                  })
+                }
+                _ => None,
+              }
+            } else {
+              None
+            };
+
+            if let Some(tail_call) = is_tail_call {
+              // Replace the call with tail call, don't add the return
+              *curr_block.flat_instrs.last_mut().unwrap() = tail_call;
+              // Tail call replaces call+return (2 instrs) with 1, so add 1 back
+              curr_block.instruction_count = curr_block.flat_instrs.len() + 1;
+            } else {
+              // Normal return
+              curr_block.positions.push(i.get_pos());
+              curr_block.flat_instrs.push(ret_ir);
+              curr_block.instruction_count = curr_block.flat_instrs.len();
+            }
             blocks.push(curr_block);
           }
           curr_block = BasicBlock::new();
@@ -180,6 +240,7 @@ impl BBFunction {
     }
 
     if !curr_block.flat_instrs.is_empty() || curr_block.label.is_some() {
+      curr_block.instruction_count = curr_block.flat_instrs.len();
       blocks.push(curr_block);
     }
 
@@ -213,8 +274,13 @@ impl BBFunction {
           block.exit.push(*true_dest);
           block.exit.push(*false_dest);
         }
-        Some(FlatIR::ReturnValue { .. } | FlatIR::ReturnVoid) => { // We are done, there is no exit from this block}
-        }
+        // Terminal instructions - no exit from this block
+        Some(
+          FlatIR::ReturnValue { .. }
+          | FlatIR::ReturnVoid
+          | FlatIR::TailCall { .. }
+          | FlatIR::TailCallVoid { .. },
+        ) => {}
         _ => {
           // If we're before the last block
           if i < last_idx {

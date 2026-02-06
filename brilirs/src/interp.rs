@@ -30,20 +30,23 @@ struct Environment {
   current_pointer: usize,
   // Size of the current frame
   current_frame_size: usize,
-  // A list of all stack pointers for valid frames on the stack
+  // Maximum frame size across all functions - ensures tail calls always fit
+  max_frame_size: usize,
+  // A list of all stack pointers and frame sizes for previous frames
   stack_pointers: Vec<(usize, usize)>,
   // `env` is used like a stack. Assume it only grows
   env: Vec<Value>,
 }
 
 impl Environment {
-  pub fn new(size: usize) -> Self {
+  pub fn new(initial_frame_size: usize, max_frame_size: usize) -> Self {
     Self {
       current_pointer: 0,
-      current_frame_size: size,
+      current_frame_size: initial_frame_size,
+      max_frame_size,
       stack_pointers: Vec::with_capacity(50),
-      // Allocate a larger stack size so the interpreter needs to allocate less often
-      env: vec![Value::default(); max(size, 50)],
+      // Allocate enough for max_frame_size so tail calls always fit
+      env: vec![Value::default(); max(max_frame_size, 50)],
     }
   }
 
@@ -62,6 +65,7 @@ impl Environment {
   pub fn set(&mut self, ident: VarIndex, val: Value) {
     self.env[self.current_pointer + ident] = val;
   }
+
   // Push a new frame onto the stack
   pub fn push_frame(&mut self, size: usize) {
     self
@@ -70,22 +74,20 @@ impl Environment {
     self.current_pointer += self.current_frame_size;
     self.current_frame_size = size;
 
-    // Check that the stack is large enough
-    if self.current_pointer + self.current_frame_size > self.env.len() {
-      // We need to allocate more stack
-      self.env.resize(
-        max(
-          self.env.len() * 4,
-          self.current_pointer + self.current_frame_size,
-        ),
-        Value::default(),
-      );
+    // Ensure at least max_frame_size is available (so tail calls to any function fit)
+    if self.current_pointer + self.max_frame_size > self.env.len() {
+      self.env.resize(self.env.len() * 4, Value::default());
     }
   }
 
   // Remove a frame from the stack
   pub fn pop_frame(&mut self) {
     (self.current_pointer, self.current_frame_size) = self.stack_pointers.pop().unwrap();
+  }
+
+  // Update frame size for tail calls (callee may have different size than caller)
+  pub fn set_frame_size(&mut self, size: usize) {
+    self.current_frame_size = size;
   }
 }
 
@@ -326,6 +328,20 @@ fn make_func_args(callee_func: &BBFunction, args: &[VarIndex], vars: &mut Enviro
     });
 }
 
+// Sets up arguments for a tail call by reusing the current frame
+fn make_tail_call_args(callee_func: &BBFunction, args: &[VarIndex], vars: &mut Environment) {
+  // Collect arg values before overwriting (args may overlap with destinations)
+  let arg_values: Vec<Value> = args.iter().map(|arg_name| *vars.get(*arg_name)).collect();
+
+  // Update frame size to callee's size (important for subsequent calls from callee)
+  vars.set_frame_size(callee_func.num_of_vars);
+
+  // Copy arguments into frame (frame already big enough due to max_frame_size)
+  for (val, dest) in arg_values.into_iter().zip(callee_func.args_as_nums.iter()) {
+    vars.set(*dest, val);
+  }
+}
+
 fn execute_unary_value<T: std::io::Write>(
   state: &mut State<T>,
   op: ValueOps,
@@ -548,8 +564,7 @@ fn execute<'a, T: std::io::Write>(
       false
     };
 
-    // WARNING!!! We can add the # of instructions at once because you can only jump to a new block at the end. This may need to be changed if speculation is implemented
-    state.instruction_count += curr_instrs.len();
+    state.instruction_count += curr_block.instruction_count;
 
     for (idx, code) in curr_instrs.iter().enumerate() {
       match code {
@@ -598,6 +613,11 @@ fn execute<'a, T: std::io::Write>(
 
           state.env.set(*dest, result);
         }
+        crate::ir::FlatIR::TailCall { func, args } => {
+          let callee_func = state.prog.get(*func).unwrap();
+          make_tail_call_args(callee_func, args, &mut state.env);
+          return execute(state, callee_func);
+        }
         crate::ir::FlatIR::Nop => {}
         crate::ir::FlatIR::Jump { dest } => {
           curr_block_idx = *dest;
@@ -626,6 +646,11 @@ fn execute<'a, T: std::io::Write>(
 
           execute(state, callee_func)?;
           state.env.pop_frame();
+        }
+        crate::ir::FlatIR::TailCallVoid { func, args } => {
+          let callee_func = state.prog.get(*func).unwrap();
+          make_tail_call_args(callee_func, args, &mut state.env);
+          return execute(state, callee_func);
         }
         crate::ir::FlatIR::PrintOne { arg } => {
           optimized_val_output(&mut state.out, state.env.get(*arg))
@@ -798,7 +823,7 @@ pub fn execute_main<T: std::io::Write, U: std::io::Write>(
     .map(|i| prog.get(i).unwrap())
     .ok_or(InterpError::NoMainFunction)?;
 
-  let mut env = Environment::new(main_func.num_of_vars);
+  let mut env = Environment::new(main_func.num_of_vars, prog.max_frame_size);
   let heap = Heap::default();
 
   env = parse_args(env, &main_func.args, &main_func.args_as_nums, input_args)
