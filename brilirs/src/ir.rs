@@ -5,6 +5,27 @@ use fxhash::FxHashMap;
 
 use crate::error::InterpError;
 
+#[expect(
+  missing_docs,
+  reason = "Fields are self-explanatory from `bril_rs::Instruction`"
+)]
+#[derive(Debug)]
+pub struct UnaryOp {
+  pub dest: VarIndex,
+  pub arg: VarIndex,
+}
+
+#[expect(
+  missing_docs,
+  reason = "Fields are self-explanatory from `bril_rs::Instruction`"
+)]
+#[derive(Debug)]
+pub struct BinaryOp {
+  pub dest: VarIndex,
+  pub arg0: VarIndex,
+  pub arg1: VarIndex,
+}
+
 /// A type alias for trying different index type sizes
 pub type IndexType = u16;
 
@@ -67,21 +88,48 @@ pub enum FlatIR {
     dest: VarIndex,
     value: Literal,
   },
-  ZeroArity {
-    op: ValueOps,
+  Undef {
     dest: VarIndex,
   },
-  UnaryArity {
-    op: ValueOps,
+  Get {
     dest: VarIndex,
-    arg: VarIndex,
   },
-  BinaryArity {
-    op: ValueOps,
-    dest: VarIndex,
-    arg0: VarIndex,
-    arg1: VarIndex,
-  },
+  // Flattened unary operations (8 variants)
+  Id(UnaryOp),
+  Not(UnaryOp),
+  Char2int(UnaryOp),
+  Int2char(UnaryOp),
+  Alloc(UnaryOp),
+  Load(UnaryOp),
+  Float2Bits(UnaryOp),
+  Bits2Float(UnaryOp),
+  // Flattened binary operations (26 variants)
+  Add(BinaryOp),
+  Sub(BinaryOp),
+  Mul(BinaryOp),
+  Div(BinaryOp),
+  Eq(BinaryOp),
+  Lt(BinaryOp),
+  Gt(BinaryOp),
+  Le(BinaryOp),
+  Ge(BinaryOp),
+  And(BinaryOp),
+  Or(BinaryOp),
+  Fadd(BinaryOp),
+  Fsub(BinaryOp),
+  Fmul(BinaryOp),
+  Fdiv(BinaryOp),
+  Feq(BinaryOp),
+  Flt(BinaryOp),
+  Fgt(BinaryOp),
+  Fle(BinaryOp),
+  Fge(BinaryOp),
+  Ceq(BinaryOp),
+  Clt(BinaryOp),
+  Cgt(BinaryOp),
+  Cle(BinaryOp),
+  Cge(BinaryOp),
+  PtrAdd(BinaryOp),
   MultiArityCall {
     func: FuncIndex,
     dest: VarIndex,
@@ -174,18 +222,27 @@ impl FlatIR {
         },
       }),
       Instruction::Value {
-        op: op @ (ValueOps::Undef | ValueOps::Get),
+        op: ValueOps::Undef,
         dest,
         args: _,
         funcs: _,
         labels: _,
         pos: _,
         op_type: _,
-      } => {
-        let dest = get_num_from_map(dest, num_var_map);
-
-        Ok(Self::ZeroArity { op, dest })
-      }
+      } => Ok(Self::Undef {
+        dest: get_num_from_map(dest, num_var_map),
+      }),
+      Instruction::Value {
+        op: ValueOps::Get,
+        dest,
+        args: _,
+        funcs: _,
+        labels: _,
+        pos: _,
+        op_type: _,
+      } => Ok(Self::Get {
+        dest: get_num_from_map(dest, num_var_map),
+      }),
 
       Instruction::Value {
         op:
@@ -208,8 +265,19 @@ impl FlatIR {
 
         let mut iter = args.into_iter().map(|v| get_num_from_map(v, num_var_map));
         let arg = iter.next().unwrap();
+        let u = UnaryOp { dest, arg };
 
-        Ok(Self::UnaryArity { op, dest, arg })
+        Ok(match op {
+          ValueOps::Id => Self::Id(u),
+          ValueOps::Not => Self::Not(u),
+          ValueOps::Char2int => Self::Char2int(u),
+          ValueOps::Int2char => Self::Int2char(u),
+          ValueOps::Alloc => Self::Alloc(u),
+          ValueOps::Load => Self::Load(u),
+          ValueOps::Float2Bits => Self::Float2Bits(u),
+          ValueOps::Bits2Float => Self::Bits2Float(u),
+          _ => unreachable!(),
+        })
       }
       Instruction::Value {
         op:
@@ -251,12 +319,36 @@ impl FlatIR {
         let mut iter = args.into_iter().map(|v| get_num_from_map(v, num_var_map));
         let arg0 = iter.next().unwrap();
         let arg1 = iter.next().unwrap();
+        let b = BinaryOp { dest, arg0, arg1 };
 
-        Ok(Self::BinaryArity {
-          op,
-          dest,
-          arg0,
-          arg1,
+        Ok(match op {
+          ValueOps::Add => Self::Add(b),
+          ValueOps::Sub => Self::Sub(b),
+          ValueOps::Mul => Self::Mul(b),
+          ValueOps::Div => Self::Div(b),
+          ValueOps::Eq => Self::Eq(b),
+          ValueOps::Lt => Self::Lt(b),
+          ValueOps::Gt => Self::Gt(b),
+          ValueOps::Le => Self::Le(b),
+          ValueOps::Ge => Self::Ge(b),
+          ValueOps::And => Self::And(b),
+          ValueOps::Or => Self::Or(b),
+          ValueOps::Fadd => Self::Fadd(b),
+          ValueOps::Fsub => Self::Fsub(b),
+          ValueOps::Fmul => Self::Fmul(b),
+          ValueOps::Fdiv => Self::Fdiv(b),
+          ValueOps::Feq => Self::Feq(b),
+          ValueOps::Flt => Self::Flt(b),
+          ValueOps::Fgt => Self::Fgt(b),
+          ValueOps::Fle => Self::Fle(b),
+          ValueOps::Fge => Self::Fge(b),
+          ValueOps::Ceq => Self::Ceq(b),
+          ValueOps::Clt => Self::Clt(b),
+          ValueOps::Cgt => Self::Cgt(b),
+          ValueOps::Cle => Self::Cle(b),
+          ValueOps::Cge => Self::Cge(b),
+          ValueOps::PtrAdd => Self::PtrAdd(b),
+          _ => unreachable!(),
         })
       }
       Instruction::Value {
