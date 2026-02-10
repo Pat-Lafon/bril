@@ -25,7 +25,6 @@ clap_complete = { version = "4.4", optional = true }
 thiserror = "2.0"
 clap = { version = "4.4", features = ["derive"] }
 fxhash = "0.2"
-mimalloc = "0.1"
 itoa = "1.0"
 
 [dependencies.bril-rs]

@@ -6,11 +6,6 @@ use bril2json::escape_control_chars;
 
 use fxhash::FxHashMap;
 
-use mimalloc::MiMalloc;
-
-#[global_allocator]
-static GLOBAL: MiMalloc = MiMalloc;
-
 use std::cmp::max;
 use std::collections::HashMap;
 use std::fmt;
