@@ -26,6 +26,21 @@ pub struct BinaryOp {
   pub arg1: VarIndex,
 }
 
+/// A fused compare-and-branch operation. Combines a comparison with an
+/// immediately following branch to avoid double dispatch and an env read.
+#[expect(
+  missing_docs,
+  reason = "Fields are self-explanatory from `bril_rs::Instruction`"
+)]
+#[derive(Debug)]
+pub struct CmpBranch {
+  pub dest: VarIndex,
+  pub arg0: VarIndex,
+  pub arg1: VarIndex,
+  pub true_dest: LabelIndex,
+  pub false_dest: LabelIndex,
+}
+
 /// A type alias for trying different index type sizes
 pub type IndexType = u16;
 
@@ -130,6 +145,18 @@ pub enum FlatIR {
   Cle(BinaryOp),
   Cge(BinaryOp),
   PtrAdd(BinaryOp),
+  // Fused compare-and-branch operations (integer)
+  EqBranch(CmpBranch),
+  LtBranch(CmpBranch),
+  GtBranch(CmpBranch),
+  LeBranch(CmpBranch),
+  GeBranch(CmpBranch),
+  // Fused compare-and-branch operations (float)
+  FeqBranch(CmpBranch),
+  FltBranch(CmpBranch),
+  FgtBranch(CmpBranch),
+  FleBranch(CmpBranch),
+  FgeBranch(CmpBranch),
   MultiArityCall {
     func: FuncIndex,
     dest: VarIndex,

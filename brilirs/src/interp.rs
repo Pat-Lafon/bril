@@ -1,7 +1,7 @@
 use crate::basic_block::{BBFunction, BBProgram};
 use crate::error::{InterpError, PositionalInterpError};
-use crate::ir::{LabelIndex, VarIndex};
-use crate::ir::FlatIR;
+use crate::ir;
+use crate::ir::{FlatIR, LabelIndex, VarIndex};
 use bril2json::escape_control_chars;
 
 use fxhash::FxHashMap;
@@ -338,6 +338,13 @@ fn make_tail_call_args(
   }
 }
 
+/// Store a comparison result and return the branch target.
+#[inline(always)]
+fn cmp_branch(env: &mut Environment, cb: &ir::CmpBranch, cond: bool) -> LabelIndex {
+  env.set(cb.dest, Value::Bool(cond));
+  if cond { cb.true_dest } else { cb.false_dest }
+}
+
 fn execute<'a, T: std::io::Write>(
   state: &mut State<'a, T>,
   func: &'a BBFunction,
@@ -583,6 +590,58 @@ fn execute<'a, T: std::io::Write>(
         } => {
           let cond = get_arg::<bool>(&state.env, *arg);
           curr_block_idx = if cond { *true_dest } else { *false_dest };
+          jumped = true;
+        }
+        // Fused compare-and-branch: integer
+        FlatIR::EqBranch(cb) => {
+          let cond = get_arg::<i64>(&state.env, cb.arg0) == get_arg::<i64>(&state.env, cb.arg1);
+          curr_block_idx = cmp_branch(&mut state.env, cb, cond);
+          jumped = true;
+        }
+        FlatIR::LtBranch(cb) => {
+          let cond = get_arg::<i64>(&state.env, cb.arg0) < get_arg::<i64>(&state.env, cb.arg1);
+          curr_block_idx = cmp_branch(&mut state.env, cb, cond);
+          jumped = true;
+        }
+        FlatIR::GtBranch(cb) => {
+          let cond = get_arg::<i64>(&state.env, cb.arg0) > get_arg::<i64>(&state.env, cb.arg1);
+          curr_block_idx = cmp_branch(&mut state.env, cb, cond);
+          jumped = true;
+        }
+        FlatIR::LeBranch(cb) => {
+          let cond = get_arg::<i64>(&state.env, cb.arg0) <= get_arg::<i64>(&state.env, cb.arg1);
+          curr_block_idx = cmp_branch(&mut state.env, cb, cond);
+          jumped = true;
+        }
+        FlatIR::GeBranch(cb) => {
+          let cond = get_arg::<i64>(&state.env, cb.arg0) >= get_arg::<i64>(&state.env, cb.arg1);
+          curr_block_idx = cmp_branch(&mut state.env, cb, cond);
+          jumped = true;
+        }
+        // Fused compare-and-branch: float
+        FlatIR::FeqBranch(cb) => {
+          let cond = get_arg::<f64>(&state.env, cb.arg0) == get_arg::<f64>(&state.env, cb.arg1);
+          curr_block_idx = cmp_branch(&mut state.env, cb, cond);
+          jumped = true;
+        }
+        FlatIR::FltBranch(cb) => {
+          let cond = get_arg::<f64>(&state.env, cb.arg0) < get_arg::<f64>(&state.env, cb.arg1);
+          curr_block_idx = cmp_branch(&mut state.env, cb, cond);
+          jumped = true;
+        }
+        FlatIR::FgtBranch(cb) => {
+          let cond = get_arg::<f64>(&state.env, cb.arg0) > get_arg::<f64>(&state.env, cb.arg1);
+          curr_block_idx = cmp_branch(&mut state.env, cb, cond);
+          jumped = true;
+        }
+        FlatIR::FleBranch(cb) => {
+          let cond = get_arg::<f64>(&state.env, cb.arg0) <= get_arg::<f64>(&state.env, cb.arg1);
+          curr_block_idx = cmp_branch(&mut state.env, cb, cond);
+          jumped = true;
+        }
+        FlatIR::FgeBranch(cb) => {
+          let cond = get_arg::<f64>(&state.env, cb.arg0) >= get_arg::<f64>(&state.env, cb.arg1);
+          curr_block_idx = cmp_branch(&mut state.env, cb, cond);
           jumped = true;
         }
         FlatIR::ReturnValue { arg } => {

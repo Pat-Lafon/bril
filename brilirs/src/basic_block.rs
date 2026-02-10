@@ -1,4 +1,4 @@
-use crate::ir::{FlatIR, FuncIndex, LabelIndex, VarIndex, get_num_from_map};
+use crate::ir::{BinaryOp, CmpBranch, FlatIR, FuncIndex, LabelIndex, VarIndex, get_num_from_map};
 use bril_rs::{Function, Position, Program};
 use fxhash::FxHashMap;
 
@@ -168,7 +168,7 @@ impl BBFunction {
         }
         bril_rs::Code::Instruction(
           i @ bril_rs::Instruction::Effect {
-            op: bril_rs::EffectOps::Jump | bril_rs::EffectOps::Branch,
+            op: bril_rs::EffectOps::Jump,
             ..
           },
         ) => {
@@ -178,6 +178,65 @@ impl BBFunction {
               .flat_instrs
               .push(FlatIR::new(i, func_map, &mut num_var_map, &label_map)?);
             curr_block.instruction_count = curr_block.flat_instrs.len();
+            blocks.push(curr_block);
+          }
+          curr_block = BasicBlock::new();
+        }
+        // Handle Branch separately to detect compare-branch fusion inline
+        bril_rs::Code::Instruction(
+          i @ bril_rs::Instruction::Effect {
+            op: bril_rs::EffectOps::Branch,
+            ..
+          },
+        ) => {
+          if curr_block.label.is_some() || blocks.is_empty() {
+            let pos = i.get_pos();
+            let branch_ir = FlatIR::new(i, func_map, &mut num_var_map, &label_map)?;
+
+            // Check for compare+branch fusion: compare immediately followed by branch
+            let fused = if let FlatIR::Branch {
+              arg,
+              true_dest,
+              false_dest,
+            } = &branch_ir
+            {
+              curr_block.flat_instrs.last().and_then(|prev| {
+                let (op, ctor): (&BinaryOp, fn(CmpBranch) -> FlatIR) = match prev {
+                  FlatIR::Eq(op) => (op, FlatIR::EqBranch),
+                  FlatIR::Lt(op) => (op, FlatIR::LtBranch),
+                  FlatIR::Gt(op) => (op, FlatIR::GtBranch),
+                  FlatIR::Le(op) => (op, FlatIR::LeBranch),
+                  FlatIR::Ge(op) => (op, FlatIR::GeBranch),
+                  FlatIR::Feq(op) => (op, FlatIR::FeqBranch),
+                  FlatIR::Flt(op) => (op, FlatIR::FltBranch),
+                  FlatIR::Fgt(op) => (op, FlatIR::FgtBranch),
+                  FlatIR::Fle(op) => (op, FlatIR::FleBranch),
+                  FlatIR::Fge(op) => (op, FlatIR::FgeBranch),
+                  _ => return None,
+                };
+                (op.dest == *arg).then(|| {
+                  ctor(CmpBranch {
+                    dest: op.dest,
+                    arg0: op.arg0,
+                    arg1: op.arg1,
+                    true_dest: *true_dest,
+                    false_dest: *false_dest,
+                  })
+                })
+              })
+            } else {
+              None
+            };
+
+            if let Some(fused) = fused {
+              // Replace the compare with the fused instruction, don't add the branch
+              *curr_block.flat_instrs.last_mut().unwrap() = fused;
+              curr_block.instruction_count = curr_block.flat_instrs.len() + 1;
+            } else {
+              curr_block.positions.push(pos);
+              curr_block.flat_instrs.push(branch_ir);
+              curr_block.instruction_count = curr_block.flat_instrs.len();
+            }
             blocks.push(curr_block);
           }
           curr_block = BasicBlock::new();
@@ -273,6 +332,21 @@ impl BBFunction {
         }) => {
           block.exit.push(*true_dest);
           block.exit.push(*false_dest);
+        }
+        Some(
+          FlatIR::EqBranch(cb)
+          | FlatIR::LtBranch(cb)
+          | FlatIR::GtBranch(cb)
+          | FlatIR::LeBranch(cb)
+          | FlatIR::GeBranch(cb)
+          | FlatIR::FeqBranch(cb)
+          | FlatIR::FltBranch(cb)
+          | FlatIR::FgtBranch(cb)
+          | FlatIR::FleBranch(cb)
+          | FlatIR::FgeBranch(cb),
+        ) => {
+          block.exit.push(cb.true_dest);
+          block.exit.push(cb.false_dest);
         }
         // Terminal instructions - no exit from this block
         Some(
