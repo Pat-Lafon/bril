@@ -47,8 +47,7 @@ version = "0.1.0"
 path = "../bril-rs/bril2json"
 
 [profile.release]
-# this can shave off a few ms but doubles the build time so it's not really worth it
-# codegen-units = 1
+codegen-units = 1
 lto = true
 panic = "abort"
 
