@@ -355,12 +355,6 @@ fn execute<'a, T: std::io::Write>(
   loop {
     let curr_block = &func.blocks[curr_block_idx.0 as usize];
     let curr_instrs = &curr_block.flat_instrs;
-    let mut jumped = if curr_block.exit.len() == 1 {
-      curr_block_idx = curr_block.exit[0];
-      true
-    } else {
-      false
-    };
 
     state.instruction_count += curr_block.instruction_count;
 
@@ -581,7 +575,6 @@ fn execute<'a, T: std::io::Write>(
         FlatIR::Nop => {}
         FlatIR::Jump { dest } => {
           curr_block_idx = *dest;
-          jumped = true;
         }
         FlatIR::Branch {
           arg,
@@ -590,59 +583,48 @@ fn execute<'a, T: std::io::Write>(
         } => {
           let cond = get_arg::<bool>(&state.env, *arg);
           curr_block_idx = if cond { *true_dest } else { *false_dest };
-          jumped = true;
         }
         // Fused compare-and-branch: integer
         FlatIR::EqBranch(cb) => {
           let cond = get_arg::<i64>(&state.env, cb.arg0) == get_arg::<i64>(&state.env, cb.arg1);
           curr_block_idx = cmp_branch(&mut state.env, cb, cond);
-          jumped = true;
         }
         FlatIR::LtBranch(cb) => {
           let cond = get_arg::<i64>(&state.env, cb.arg0) < get_arg::<i64>(&state.env, cb.arg1);
           curr_block_idx = cmp_branch(&mut state.env, cb, cond);
-          jumped = true;
         }
         FlatIR::GtBranch(cb) => {
           let cond = get_arg::<i64>(&state.env, cb.arg0) > get_arg::<i64>(&state.env, cb.arg1);
           curr_block_idx = cmp_branch(&mut state.env, cb, cond);
-          jumped = true;
         }
         FlatIR::LeBranch(cb) => {
           let cond = get_arg::<i64>(&state.env, cb.arg0) <= get_arg::<i64>(&state.env, cb.arg1);
           curr_block_idx = cmp_branch(&mut state.env, cb, cond);
-          jumped = true;
         }
         FlatIR::GeBranch(cb) => {
           let cond = get_arg::<i64>(&state.env, cb.arg0) >= get_arg::<i64>(&state.env, cb.arg1);
           curr_block_idx = cmp_branch(&mut state.env, cb, cond);
-          jumped = true;
         }
         // Fused compare-and-branch: float
         FlatIR::FeqBranch(cb) => {
           let cond = get_arg::<f64>(&state.env, cb.arg0) == get_arg::<f64>(&state.env, cb.arg1);
           curr_block_idx = cmp_branch(&mut state.env, cb, cond);
-          jumped = true;
         }
         FlatIR::FltBranch(cb) => {
           let cond = get_arg::<f64>(&state.env, cb.arg0) < get_arg::<f64>(&state.env, cb.arg1);
           curr_block_idx = cmp_branch(&mut state.env, cb, cond);
-          jumped = true;
         }
         FlatIR::FgtBranch(cb) => {
           let cond = get_arg::<f64>(&state.env, cb.arg0) > get_arg::<f64>(&state.env, cb.arg1);
           curr_block_idx = cmp_branch(&mut state.env, cb, cond);
-          jumped = true;
         }
         FlatIR::FleBranch(cb) => {
           let cond = get_arg::<f64>(&state.env, cb.arg0) <= get_arg::<f64>(&state.env, cb.arg1);
           curr_block_idx = cmp_branch(&mut state.env, cb, cond);
-          jumped = true;
         }
         FlatIR::FgeBranch(cb) => {
           let cond = get_arg::<f64>(&state.env, cb.arg0) >= get_arg::<f64>(&state.env, cb.arg1);
           curr_block_idx = cmp_branch(&mut state.env, cb, cond);
-          jumped = true;
         }
         FlatIR::ReturnValue { arg } => {
           let res = get_arg::<Value>(&state.env, *arg);
@@ -704,24 +686,25 @@ fn execute<'a, T: std::io::Write>(
       }
     }
 
-    if !jumped {
-      if let Some(ty) = &func.return_type {
-        return Err(
-          InterpError::NonVoidFuncNoRet(ty.clone()).add_pos(if curr_instrs.is_empty() {
-            // Ideally we use the last instruction in the block before the fatal
-            // (implicit) return... but if that block is empty, we should just
-            // point to the function itself
-            func.pos.clone()
-          } else {
-            curr_block
-              .positions
-              .get(curr_instrs.len() - 1)
-              .cloned()
-              .unwrap_or_default()
-          }),
-        );
+    match curr_block.exit.len() {
+      1 => curr_block_idx = curr_block.exit[0],
+      0 => {
+        if let Some(ty) = &func.return_type {
+          return Err(
+            InterpError::NonVoidFuncNoRet(ty.clone()).add_pos(if curr_instrs.is_empty() {
+              func.pos.clone()
+            } else {
+              curr_block
+                .positions
+                .get(curr_instrs.len() - 1)
+                .cloned()
+                .unwrap_or_default()
+            }),
+          );
+        }
+        return Ok(None);
       }
-      return Ok(None);
+      _ => {} // Branch/CmpBranch already set curr_block_idx
     }
   }
 }
