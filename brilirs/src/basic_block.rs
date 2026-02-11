@@ -173,11 +173,14 @@ impl BBFunction {
           },
         ) => {
           if curr_block.label.is_some() || blocks.is_empty() {
-            curr_block.positions.push(i.get_pos());
-            curr_block
-              .flat_instrs
-              .push(FlatIR::new(i, func_map, &mut num_var_map, &label_map)?);
-            curr_block.instruction_count = curr_block.flat_instrs.len();
+            // Resolve the jump target and set exit directly — don't add Jump
+            // to flat_instrs since the exit edge already encodes the target.
+            // Count it for profiling.
+            let jump_ir = FlatIR::new(i, func_map, &mut num_var_map, &label_map)?;
+            if let FlatIR::Jump { dest } = jump_ir {
+              curr_block.exit.push(dest);
+            }
+            curr_block.instruction_count = curr_block.flat_instrs.len() + 1;
             blocks.push(curr_block);
           }
           curr_block = BasicBlock::new();
@@ -323,8 +326,12 @@ impl BBFunction {
       // Get the last instruction
       let last_instr = block.flat_instrs.last();
 
+      // Jump blocks already have exit set inline during find_basic_blocks
+      if !block.exit.is_empty() {
+        continue;
+      }
+
       match last_instr {
-        Some(FlatIR::Jump { dest }) => block.exit.push(*dest),
         Some(FlatIR::Branch {
           true_dest,
           false_dest,
@@ -356,7 +363,7 @@ impl BBFunction {
           | FlatIR::TailCallVoid { .. },
         ) => {}
         _ => {
-          // If we're before the last block
+          // Fallthrough to next block
           if i < last_idx {
             block.exit.push(LabelIndex::try_from(i + 1).unwrap());
           }
