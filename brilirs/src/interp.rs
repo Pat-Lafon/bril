@@ -4,8 +4,6 @@ use crate::ir;
 use crate::ir::{FlatIR, LabelIndex, VarIndex};
 use bril2json::escape_control_chars;
 
-use fxhash::FxHashMap;
-
 use std::cmp::max;
 use std::collections::HashMap;
 use std::fmt;
@@ -86,74 +84,101 @@ impl Environment {
   }
 }
 
-// todo: This is basically a copy of the heap implement in `brili` and we could probably do something smarter. This currently isn't that worth it to optimize because most benchmarks do not use the memory extension nor do they run for very long. You (the reader in the future) may be working with Bril programs that you would like to speed up that extensively use the Bril memory extension. In that case, it would be worth seeing how to implement Heap without a map based memory. Maybe try to re-implement malloc for a large Vec<Value>?
+// Vec-based heap with generational indices for O(1) alloc/free/read/write.
+// Pointer stores (index, generation) directly. On free, the generation is bumped
+// and the slot is pushed onto a free list for reuse. Use-after-free is detected
+// via generation mismatch.
+struct HeapEntry {
+  generation: u16,
+  data: Vec<Value>,
+}
+
 struct Heap {
-  memory: FxHashMap<usize, Vec<Value>>,
-  base_num_counter: usize,
+  memory: Vec<HeapEntry>,
+  free_list: Vec<u16>,
+  live_count: usize,
 }
 
 impl Default for Heap {
   fn default() -> Self {
     Self {
-      memory: FxHashMap::with_capacity_and_hasher(20, fxhash::FxBuildHasher::default()),
-      base_num_counter: 0,
+      memory: Vec::new(),
+      free_list: Vec::new(),
+      live_count: 0,
     }
   }
 }
 
 impl Heap {
   fn is_empty(&self) -> bool {
-    self.memory.is_empty()
+    self.live_count == 0
   }
 
   fn alloc(&mut self, amount: i64) -> Result<Value, InterpError> {
     let amount: usize = amount
       .try_into()
       .map_err(|_| InterpError::CannotAllocSize(amount))?;
-    let base = self.base_num_counter;
-    self.base_num_counter += 1;
-    self.memory.insert(base, vec![Value::default(); amount]);
-    Ok(Value::Pointer(Pointer { base, offset: 0 }))
+
+    let (index, generation) = if let Some(index) = self.free_list.pop() {
+      let entry = &mut self.memory[index as usize];
+      entry.data.resize(amount, Value::default());
+      (index, entry.generation)
+    } else {
+      let index = self.memory.len() as u16;
+      self.memory.push(HeapEntry {
+        generation: 0,
+        data: vec![Value::default(); amount],
+      });
+      (index, 0)
+    };
+
+    self.live_count += 1;
+    Ok(Value::Pointer(Pointer {
+      index,
+      generation,
+      offset: 0,
+    }))
   }
 
   fn free(&mut self, key: &Pointer) -> Result<(), InterpError> {
-    if self.memory.remove(&key.base).is_some() && key.offset == 0 {
-      Ok(())
-    } else {
-      Err(InterpError::IllegalFree(key.base, key.offset))
+    if key.offset != 0 {
+      return Err(InterpError::IllegalFree(key.index, key.offset));
     }
+    if let Some(entry) = self.memory.get_mut(key.index as usize) {
+      if entry.generation == key.generation && !entry.data.is_empty() {
+        entry.data.clear();
+        entry.generation = entry.generation.wrapping_add(1);
+        self.free_list.push(key.index);
+        self.live_count -= 1;
+        return Ok(());
+      }
+    }
+    Err(InterpError::IllegalFree(key.index, key.offset))
   }
 
   fn write(&mut self, key: &Pointer, val: Value) -> Result<(), InterpError> {
-    // Will check that key.offset is >=0
-    let offset: usize = key
-      .offset
-      .try_into()
-      .map_err(|_| InterpError::InvalidMemoryAccess(key.base, key.offset))?;
-    match self.memory.get_mut(&key.base) {
-      Some(vec) if vec.len() > offset => {
-        vec[offset] = val;
-        Ok(())
-      }
-      Some(_) | None => Err(InterpError::InvalidMemoryAccess(key.base, key.offset)),
+    let offset = key.offset as usize;
+    let entry = &mut self.memory[key.index as usize];
+    if entry.generation == key.generation && offset < entry.data.len() {
+      entry.data[offset] = val;
+      Ok(())
+    } else {
+      Err(InterpError::InvalidMemoryAccess(key.index, key.offset))
     }
   }
 
-  fn read(&self, key: &Pointer) -> Result<&Value, InterpError> {
-    // Will check that key.offset is >=0
-    let offset: usize = key
-      .offset
-      .try_into()
-      .map_err(|_| InterpError::InvalidMemoryAccess(key.base, key.offset))?;
-    self
-      .memory
-      .get(&key.base)
-      .and_then(|vec| vec.get(offset))
-      .ok_or(InterpError::InvalidMemoryAccess(key.base, key.offset))
-      .and_then(|val| match val {
+  fn read(&self, key: &Pointer) -> Result<Value, InterpError> {
+    let offset = key.offset as usize;
+    let entry = &self.memory[key.index as usize];
+    if entry.generation == key.generation && offset < entry.data.len() {
+      let val = entry.data[offset];
+      match val {
         Value::Uninitialized => Err(InterpError::UsingUninitializedMemory),
         _ => Ok(val),
-      })
+      }
+    } else {
+      Err(InterpError::InvalidMemoryAccess(key.index, key.offset))
+    }
   }
 }
 
@@ -177,15 +202,17 @@ enum Value {
 
 #[derive(Debug, Clone, PartialEq, Copy)]
 struct Pointer {
-  base: usize,
-  offset: i64,
+  index: u16,
+  generation: u16,
+  offset: i32,
 }
 
 impl Pointer {
   const fn add(&self, offset: i64) -> Self {
     Self {
-      base: self.base,
-      offset: self.offset + offset,
+      index: self.index,
+      generation: self.generation,
+      offset: self.offset + offset as i32,
     }
   }
 }
@@ -407,7 +434,7 @@ fn execute<'a, T: std::io::Write>(
           let res = state.heap.read(a).map_err(|e| {
             e.add_pos(curr_block.positions.get(idx).cloned().unwrap_or_default())
           })?;
-          state.env.set(op.dest, *res);
+          state.env.set(op.dest, res);
         }
         FlatIR::Float2Bits(op) => {
           let float = get_arg::<f64>(&state.env, op.arg);
@@ -673,7 +700,9 @@ fn execute<'a, T: std::io::Write>(
         FlatIR::Store { arg0, arg1 } => {
           let key = get_arg::<&Pointer>(&state.env, *arg0);
           let val = get_arg::<Value>(&state.env, *arg1);
-          state.heap.write(key, val)?;
+          state.heap.write(key, val).map_err(|e| {
+            e.add_pos(curr_block.positions.get(idx).cloned().unwrap_or_default())
+          })?;
         }
         FlatIR::Set { arg0, arg1 } => {
           let val = get_arg::<Value>(&state.env, *arg1);
@@ -681,7 +710,9 @@ fn execute<'a, T: std::io::Write>(
         }
         FlatIR::Free { arg } => {
           let ptr = get_arg::<&Pointer>(&state.env, *arg);
-          state.heap.free(ptr)?;
+          state.heap.free(ptr).map_err(|e| {
+            e.add_pos(curr_block.positions.get(idx).cloned().unwrap_or_default())
+          })?;
         }
       }
     }
