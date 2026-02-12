@@ -31,10 +31,10 @@ pub enum InterpError {
   NonVoidFuncNoRet(Type),
   #[error("cannot allocate `{0}` entries")]
   CannotAllocSize(i64),
-  #[error("Tried to free illegal memory location base: `{0}`, offset: `{1}`. Offset must be 0.")]
-  IllegalFree(usize, i64), // (base, offset)
+  #[error("Tried to free illegal memory location index: `{0}`, offset: `{1}`. Offset must be 0.")]
+  IllegalFree(u16, i32), // (index, offset)
   #[error("Uninitialized heap location `{0}` and/or illegal offset `{1}`")]
-  InvalidMemoryAccess(usize, i64), // (base, offset)
+  InvalidMemoryAccess(u16, i32), // (index, offset)
   #[error("Expected `{0}` function arguments, found `{1}`")]
   BadNumFuncArgs(usize, usize), // (expected, actual)
   #[error("Expected `{0}` instruction arguments, found `{1}`")]
