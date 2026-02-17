@@ -370,8 +370,6 @@ Examples:
                         help="Benchmark categories to run (default: core)")
     parser.add_argument("--output", type=str,
                         help="Output results to JSON file")
-    parser.add_argument("--keep-worktree", action="store_true",
-                        help="Don't remove the worktree after benchmarking")
     args = parser.parse_args()
 
     # Check requirements before doing anything
@@ -416,8 +414,6 @@ Examples:
     print(f"Benchmarks to run: {len(benchmarks)}")
     print()
 
-    worktree_path = None
-
     if use_pgo_mode:
         # PGO mode: build release first, then PGO
         print("Building binaries...")
@@ -437,20 +433,62 @@ Examples:
             sys.exit(1)
 
     else:
-        # Git worktree mode
-        worktree_path = repo_root / ".worktree-baseline"
-        print(f"Setting up baseline worktree...")
+        # In-place checkout mode: build both binaries from the same directory
+        # to guarantee identical compilation (same paths, same metadata hashes).
+        # 1. Build current version first, copy binary aside
+        # 2. Stash changes, checkout baseline, build, copy binary
+        # 3. Restore original state
 
-        if not setup_worktree(args.baseline, worktree_path):
-            sys.exit(1)
-
-        print("\nBuilding brilirs...")
-        baseline_bin = build_brilirs(worktree_path / "brilirs")
+        print("Building current version...")
         current_bin = build_brilirs(script_dir)
-
-        if not baseline_bin or not current_bin:
+        if not current_bin:
             print("Build failed!", file=sys.stderr)
             sys.exit(1)
+
+        # Copy current binary to temp location
+        current_copy = Path(tempfile.mkdtemp()) / "brilirs-current"
+        shutil.copy2(current_bin, current_copy)
+        current_bin = current_copy
+
+        # Save current state
+        original_ref = run_cmd(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo_root).stdout.strip()
+        if original_ref == "HEAD":
+            # Detached HEAD, save the hash instead
+            original_ref = run_cmd(["git", "rev-parse", "HEAD"], cwd=repo_root).stdout.strip()
+
+        # Stash any uncommitted changes (including untracked files in brilirs/src)
+        stashed = False
+        if has_uncommitted_changes(repo_root):
+            print("Stashing uncommitted changes...")
+            result = run_cmd(["git", "stash", "push", "--include-untracked", "-m", "benchmark_compare auto-stash"], cwd=repo_root, check=False)
+            stashed = result.returncode == 0
+
+        try:
+            # Checkout baseline
+            print(f"Checking out baseline ({args.baseline})...")
+            result = run_cmd(["git", "checkout", args.baseline], cwd=repo_root, check=False)
+            if result.returncode != 0:
+                print(f"Failed to checkout {args.baseline}: {result.stderr}", file=sys.stderr)
+                sys.exit(1)
+
+            print("Building baseline version...")
+            baseline_bin = build_brilirs(script_dir)
+            if not baseline_bin:
+                print("Baseline build failed!", file=sys.stderr)
+                sys.exit(1)
+
+            # Copy baseline binary
+            baseline_copy = Path(tempfile.mkdtemp()) / "brilirs-baseline"
+            shutil.copy2(baseline_bin, baseline_copy)
+            baseline_bin = baseline_copy
+
+        finally:
+            # Always restore original state
+            print(f"Restoring {original_ref}...")
+            run_cmd(["git", "checkout", original_ref], cwd=repo_root, check=False)
+            if stashed:
+                print("Restoring stashed changes...")
+                run_cmd(["git", "stash", "pop"], cwd=repo_root, check=False)
 
     try:
 
@@ -501,9 +539,7 @@ Examples:
                     print("failed")
 
     finally:
-        if worktree_path and not args.keep_worktree:
-            print("\nCleaning up worktree...")
-            cleanup_worktree(worktree_path)
+        pass
 
     # Output JSON if requested
     if args.output:
