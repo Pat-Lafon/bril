@@ -71,12 +71,23 @@ impl BBProgram {
 }
 
 #[doc(hidden)]
+#[derive(Debug, Clone, Copy)]
+pub enum BlockExit {
+  /// Unconditional jump or natural fallthrough to the next block
+  Fallthrough(LabelIndex),
+  /// Terminal block: return, tail call, or end-of-function
+  Terminal,
+  /// Branch/CmpBranch already set curr_block_idx during instruction dispatch
+  Branched,
+}
+
+#[doc(hidden)]
 #[derive(Debug)]
 pub struct BasicBlock {
   pub label: Option<String>,
   pub flat_instrs: Vec<FlatIR>,
   pub positions: Vec<Option<Position>>,
-  pub exit: Vec<LabelIndex>,
+  pub exit: BlockExit,
   /// Precomputed instruction count for this block (tail calls count as 2)
   pub instruction_count: usize,
 }
@@ -87,7 +98,7 @@ impl BasicBlock {
       label: None,
       flat_instrs: Vec::new(),
       positions: Vec::new(),
-      exit: Vec::new(),
+      exit: BlockExit::Terminal,
       instruction_count: 0,
     }
   }
@@ -178,7 +189,7 @@ impl BBFunction {
             // Count it for profiling.
             let jump_ir = FlatIR::new(i, func_map, &mut num_var_map, &label_map)?;
             if let FlatIR::Jump { dest } = jump_ir {
-              curr_block.exit.push(dest);
+              curr_block.exit = BlockExit::Fallthrough(dest);
             }
             curr_block.instruction_count = curr_block.flat_instrs.len() + 1;
             blocks.push(curr_block);
@@ -323,52 +334,43 @@ impl BBFunction {
     }
     let last_idx = self.blocks.len() - 1;
     for (i, block) in self.blocks.iter_mut().enumerate() {
-      // Get the last instruction
-      let last_instr = block.flat_instrs.last();
-
-      // Jump blocks already have exit set inline during find_basic_blocks
-      if !block.exit.is_empty() {
+      // Jump blocks already have exit set during find_basic_blocks
+      if matches!(block.exit, BlockExit::Fallthrough(_)) {
         continue;
       }
 
-      match last_instr {
-        Some(FlatIR::Branch {
-          true_dest,
-          false_dest,
-          ..
-        }) => {
-          block.exit.push(*true_dest);
-          block.exit.push(*false_dest);
-        }
+      let last_instr = block.flat_instrs.last();
+
+      block.exit = match last_instr {
         Some(
-          FlatIR::EqBranch(cb)
-          | FlatIR::LtBranch(cb)
-          | FlatIR::GtBranch(cb)
-          | FlatIR::LeBranch(cb)
-          | FlatIR::GeBranch(cb)
-          | FlatIR::FeqBranch(cb)
-          | FlatIR::FltBranch(cb)
-          | FlatIR::FgtBranch(cb)
-          | FlatIR::FleBranch(cb)
-          | FlatIR::FgeBranch(cb),
-        ) => {
-          block.exit.push(cb.true_dest);
-          block.exit.push(cb.false_dest);
-        }
+          FlatIR::Branch { .. }
+          | FlatIR::EqBranch(_)
+          | FlatIR::LtBranch(_)
+          | FlatIR::GtBranch(_)
+          | FlatIR::LeBranch(_)
+          | FlatIR::GeBranch(_)
+          | FlatIR::FeqBranch(_)
+          | FlatIR::FltBranch(_)
+          | FlatIR::FgtBranch(_)
+          | FlatIR::FleBranch(_)
+          | FlatIR::FgeBranch(_),
+        ) => BlockExit::Branched,
         // Terminal instructions - no exit from this block
         Some(
           FlatIR::ReturnValue { .. }
           | FlatIR::ReturnVoid
           | FlatIR::TailCall { .. }
           | FlatIR::TailCallVoid { .. },
-        ) => {}
+        ) => BlockExit::Terminal,
         _ => {
           // Fallthrough to next block
           if i < last_idx {
-            block.exit.push(LabelIndex::try_from(i + 1).unwrap());
+            BlockExit::Fallthrough(LabelIndex::try_from(i + 1).unwrap())
+          } else {
+            BlockExit::Terminal
           }
         }
-      }
+      };
     }
   }
 }

@@ -1,4 +1,4 @@
-use crate::basic_block::{BBFunction, BBProgram};
+use crate::basic_block::{BBFunction, BBProgram, BlockExit};
 use crate::error::{InterpError, PositionalInterpError};
 use crate::ir;
 use crate::ir::{FlatIR, LabelIndex, VarIndex};
@@ -717,9 +717,9 @@ fn execute<'a, T: std::io::Write>(
       }
     }
 
-    match curr_block.exit.len() {
-      1 => curr_block_idx = curr_block.exit[0],
-      0 => {
+    match curr_block.exit {
+      BlockExit::Fallthrough(next) => curr_block_idx = next,
+      BlockExit::Terminal => {
         if let Some(ty) = &func.return_type {
           return Err(
             InterpError::NonVoidFuncNoRet(ty.clone()).add_pos(if curr_instrs.is_empty() {
@@ -735,7 +735,7 @@ fn execute<'a, T: std::io::Write>(
         }
         return Ok(None);
       }
-      _ => {} // Branch/CmpBranch already set curr_block_idx
+      BlockExit::Branched => {} // Branch/CmpBranch already set curr_block_idx
     }
   }
 }
