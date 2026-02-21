@@ -34,7 +34,7 @@ let program = parse_abstract_program_from_read(Cursor::new(program), true, true,
 let args = [];
 
 check::type_check(&program)?;
-let bbprog = BBProgram::new(program)?;
+let bbprog: BBProgram = program.try_into()?;
 interp::execute_main(&bbprog, std::io::stdout(), &args, false, std::io::stderr())?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```

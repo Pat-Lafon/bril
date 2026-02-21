@@ -7,13 +7,9 @@ use crate::error::{InterpError, PositionalInterpError};
 /// A program represented as basic blocks. This is the IR of `brilirs`
 #[derive(Debug)]
 pub struct BBProgram {
-  #[doc(hidden)]
-  pub index_of_main: Option<FuncIndex>,
-  #[doc(hidden)]
-  pub func_index: Vec<BBFunction>,
-  /// Maximum frame size across all functions - used for pre-allocation
-  #[doc(hidden)]
-  pub max_frame_size: usize,
+  pub(crate) index_of_main: Option<FuncIndex>,
+  pub(crate) func_index: Vec<BBFunction>,
+  pub(crate) max_frame_size: usize,
 }
 
 impl TryFrom<Program> for BBProgram {
@@ -63,33 +59,26 @@ impl BBProgram {
     }
   }
 
-  #[doc(hidden)]
   #[must_use]
-  pub fn get(&self, func_name: FuncIndex) -> Option<&BBFunction> {
+  pub(crate) fn get(&self, func_name: FuncIndex) -> Option<&BBFunction> {
     self.func_index.get(func_name.0 as usize)
   }
 }
 
-#[doc(hidden)]
 #[derive(Debug, Clone, Copy)]
-pub enum BlockExit {
-  /// Unconditional jump or natural fallthrough to the next block
+pub(crate) enum BlockExit {
   Fallthrough(LabelIndex),
-  /// Terminal block: return, tail call, or end-of-function
   Terminal,
-  /// Branch/CmpBranch already set curr_block_idx during instruction dispatch
   Branched,
 }
 
-#[doc(hidden)]
 #[derive(Debug)]
-pub struct BasicBlock {
-  pub label: Option<String>,
-  pub flat_instrs: Vec<FlatIR>,
-  pub positions: Vec<Option<Position>>,
-  pub exit: BlockExit,
-  /// Precomputed instruction count for this block (tail calls count as 2)
-  pub instruction_count: usize,
+pub(crate) struct BasicBlock {
+  pub(crate) label: Option<String>,
+  pub(crate) flat_instrs: Vec<FlatIR>,
+  pub(crate) positions: Vec<Option<Position>>,
+  pub(crate) exit: BlockExit,
+  pub(crate) instruction_count: usize,
 }
 
 impl BasicBlock {
@@ -104,19 +93,14 @@ impl BasicBlock {
   }
 }
 
-#[doc(hidden)]
 #[derive(Debug)]
-pub struct BBFunction {
-  pub name: String,
-  pub args: Vec<bril_rs::Argument>,
-  pub return_type: Option<bril_rs::Type>,
-  pub blocks: Vec<BasicBlock>,
-  // The following is an optimization by replacing the string representation of variables with a number
-  // Variable names are ordered from 0 to num_of_vars.
-  // These replacements are found for function args and for code in the `BasicBlock`
-  pub num_of_vars: usize,
-  pub args_as_nums: Vec<VarIndex>,
-  pub pos: Option<Position>,
+pub(crate) struct BBFunction {
+  pub(crate) args: Vec<bril_rs::Argument>,
+  pub(crate) return_type: Option<bril_rs::Type>,
+  pub(crate) blocks: Vec<BasicBlock>,
+  pub(crate) num_of_vars: usize,
+  pub(crate) args_as_nums: Vec<VarIndex>,
+  pub(crate) pos: Option<Position>,
 }
 
 impl BBFunction {
@@ -266,27 +250,23 @@ impl BBFunction {
             let ret_ir = FlatIR::new(i.clone(), func_map, &mut num_var_map, &label_map)?;
 
             // Check for tail call pattern: Call followed by Return
-            let is_tail_call = if let Some(prev) = curr_block.flat_instrs.last() {
-              match (prev, &ret_ir) {
-                (FlatIR::MultiArityCall { func, dest, args }, FlatIR::ReturnValue { arg })
-                  if dest == arg =>
-                {
-                  Some(FlatIR::TailCall {
-                    func: *func,
-                    args: args.clone(),
-                  })
-                }
-                (FlatIR::EffectfulCall { func, args }, FlatIR::ReturnVoid) => {
-                  Some(FlatIR::TailCallVoid {
-                    func: *func,
-                    args: args.clone(),
-                  })
-                }
-                _ => None,
+            let is_tail_call = curr_block.flat_instrs.last().and_then(|prev| match (prev, &ret_ir) {
+              (FlatIR::MultiArityCall { func, dest, args }, FlatIR::ReturnValue { arg })
+                if dest == arg =>
+              {
+                Some(FlatIR::TailCall {
+                  func: *func,
+                  args: args.clone(),
+                })
               }
-            } else {
-              None
-            };
+              (FlatIR::EffectfulCall { func, args }, FlatIR::ReturnVoid) => {
+                Some(FlatIR::TailCallVoid {
+                  func: *func,
+                  args: args.clone(),
+                })
+              }
+              _ => None,
+            });
 
             if let Some(tail_call) = is_tail_call {
               // Replace the call with tail call, don't add the return
@@ -318,7 +298,6 @@ impl BBFunction {
     }
 
     Ok(Self {
-      name: func.name,
       args: func.args,
       return_type: func.return_type,
       blocks,

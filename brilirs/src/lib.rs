@@ -23,8 +23,7 @@ pub mod cli;
 pub mod error;
 /// Provides ```interp::execute_main``` to execute [Program] that have been converted into [`BBProgram`]
 pub mod interp;
-/// An optimized version of `bril_rs` with less indirection
-pub mod ir;
+pub(crate) mod ir;
 
 #[doc(hidden)]
 pub fn run_input<T: std::io::Write, U: std::io::Write>(

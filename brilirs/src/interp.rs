@@ -93,24 +93,15 @@ struct HeapEntry {
   data: Vec<Value>,
 }
 
+#[derive(Default)]
 struct Heap {
   memory: Vec<HeapEntry>,
   free_list: Vec<u16>,
   live_count: usize,
 }
 
-impl Default for Heap {
-  fn default() -> Self {
-    Self {
-      memory: Vec::new(),
-      free_list: Vec::new(),
-      live_count: 0,
-    }
-  }
-}
-
 impl Heap {
-  fn is_empty(&self) -> bool {
+  const fn is_empty(&self) -> bool {
     self.live_count == 0
   }
 
@@ -124,7 +115,7 @@ impl Heap {
       entry.data.resize(amount, Value::default());
       (index, entry.generation)
     } else {
-      let index = self.memory.len() as u16;
+      let index = self.memory.len().try_into().unwrap();
       self.memory.push(HeapEntry {
         generation: 0,
         data: vec![Value::default(); amount],
@@ -140,24 +131,26 @@ impl Heap {
     }))
   }
 
-  fn free(&mut self, key: &Pointer) -> Result<(), InterpError> {
+  fn free(&mut self, key: Pointer) -> Result<(), InterpError> {
     if key.offset != 0 {
       return Err(InterpError::IllegalFree(key.index, key.offset));
     }
-    if let Some(entry) = self.memory.get_mut(key.index as usize) {
-      if entry.generation == key.generation && !entry.data.is_empty() {
-        entry.data.clear();
-        entry.generation = entry.generation.wrapping_add(1);
-        self.free_list.push(key.index);
-        self.live_count -= 1;
-        return Ok(());
-      }
+    if let Some(entry) = self.memory.get_mut(key.index as usize)
+      && entry.generation == key.generation
+      && !entry.data.is_empty()
+    {
+      entry.data.clear();
+      entry.generation = entry.generation.wrapping_add(1);
+      self.free_list.push(key.index);
+      self.live_count -= 1;
+      return Ok(());
     }
     Err(InterpError::IllegalFree(key.index, key.offset))
   }
 
-  fn write(&mut self, key: &Pointer, val: Value) -> Result<(), InterpError> {
-    let offset = key.offset as usize;
+  fn write(&mut self, key: Pointer, val: Value) -> Result<(), InterpError> {
+    let offset: usize = key.offset.try_into()
+      .map_err(|_| InterpError::InvalidMemoryAccess(key.index, key.offset))?;
     let entry = &mut self.memory[key.index as usize];
     if entry.generation == key.generation && offset < entry.data.len() {
       entry.data[offset] = val;
@@ -167,8 +160,9 @@ impl Heap {
     }
   }
 
-  fn read(&self, key: &Pointer) -> Result<Value, InterpError> {
-    let offset = key.offset as usize;
+  fn read(&self, key: Pointer) -> Result<Value, InterpError> {
+    let offset: usize = key.offset.try_into()
+      .map_err(|_| InterpError::InvalidMemoryAccess(key.index, key.offset))?;
     let entry = &self.memory[key.index as usize];
     if entry.generation == key.generation && offset < entry.data.len() {
       let val = entry.data[offset];
@@ -208,12 +202,16 @@ struct Pointer {
 }
 
 impl Pointer {
-  const fn add(&self, offset: i64) -> Self {
-    Self {
+  fn add(self, offset: i64) -> Result<Self, InterpError> {
+    let offset = i32::try_from(offset)
+      .ok()
+      .and_then(|o| self.offset.checked_add(o))
+      .ok_or(InterpError::InvalidMemoryAccess(self.index, self.offset))?;
+    Ok(Self {
       index: self.index,
       generation: self.generation,
-      offset: self.offset + offset as i32,
-    }
+      offset,
+    })
   }
 }
 
@@ -366,7 +364,7 @@ fn make_tail_call_args(
 }
 
 /// Store a comparison result and return the branch target.
-#[inline(always)]
+#[inline]
 fn cmp_branch(env: &mut Environment, cb: &ir::CmpBranch, cond: bool) -> LabelIndex {
   env.set(cb.dest, Value::Bool(cond));
   if cond { cb.true_dest } else { cb.false_dest }
@@ -431,7 +429,7 @@ fn execute<'a, T: std::io::Write>(
         }
         FlatIR::Load(op) => {
           let a = get_arg::<&Pointer>(&state.env, op.arg);
-          let res = state.heap.read(a).map_err(|e| {
+          let res = state.heap.read(*a).map_err(|e| {
             e.add_pos(curr_block.positions.get(idx).cloned().unwrap_or_default())
           })?;
           state.env.set(op.dest, res);
@@ -580,8 +578,10 @@ fn execute<'a, T: std::io::Write>(
         FlatIR::PtrAdd(op) => {
           let a0 = get_arg::<&Pointer>(&state.env, op.arg0);
           let a1 = get_arg::<i64>(&state.env, op.arg1);
-          let res = Value::Pointer(a0.add(a1));
-          state.env.set(op.dest, res);
+          let ptr = a0.add(a1).map_err(|e| {
+            e.add_pos(curr_block.positions.get(idx).cloned().unwrap_or_default())
+          })?;
+          state.env.set(op.dest, Value::Pointer(ptr));
         }
         FlatIR::MultiArityCall { func, dest, args } => {
           let callee_func = state.prog.get(*func).unwrap();
@@ -594,7 +594,7 @@ fn execute<'a, T: std::io::Write>(
 
           state.env.set(*dest, result);
         }
-        FlatIR::TailCall { func, args } => {
+        FlatIR::TailCall { func, args } | FlatIR::TailCallVoid { func, args } => {
           let callee_func = state.prog.get(*func).unwrap();
           make_tail_call_args(callee_func, args, &mut state.env, &mut state.arg_scratch);
           return execute(state, callee_func);
@@ -668,11 +668,6 @@ fn execute<'a, T: std::io::Write>(
           execute(state, callee_func)?;
           state.env.pop_frame();
         }
-        FlatIR::TailCallVoid { func, args } => {
-          let callee_func = state.prog.get(*func).unwrap();
-          make_tail_call_args(callee_func, args, &mut state.env, &mut state.arg_scratch);
-          return execute(state, callee_func);
-        }
         FlatIR::PrintOne { arg } => {
           optimized_val_output(&mut state.out, state.env.get(*arg))
             .and_then(|()| // Add new line
@@ -700,7 +695,7 @@ fn execute<'a, T: std::io::Write>(
         FlatIR::Store { arg0, arg1 } => {
           let key = get_arg::<&Pointer>(&state.env, *arg0);
           let val = get_arg::<Value>(&state.env, *arg1);
-          state.heap.write(key, val).map_err(|e| {
+          state.heap.write(*key, val).map_err(|e| {
             e.add_pos(curr_block.positions.get(idx).cloned().unwrap_or_default())
           })?;
         }
@@ -710,7 +705,7 @@ fn execute<'a, T: std::io::Write>(
         }
         FlatIR::Free { arg } => {
           let ptr = get_arg::<&Pointer>(&state.env, *arg);
-          state.heap.free(ptr).map_err(|e| {
+          state.heap.free(*ptr).map_err(|e| {
             e.add_pos(curr_block.positions.get(idx).cloned().unwrap_or_default())
           })?;
         }

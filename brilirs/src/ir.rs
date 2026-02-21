@@ -5,20 +5,12 @@ use fxhash::FxHashMap;
 
 use crate::error::InterpError;
 
-#[expect(
-  missing_docs,
-  reason = "Fields are self-explanatory from `bril_rs::Instruction`"
-)]
 #[derive(Debug)]
 pub struct UnaryOp {
   pub dest: VarIndex,
   pub arg: VarIndex,
 }
 
-#[expect(
-  missing_docs,
-  reason = "Fields are self-explanatory from `bril_rs::Instruction`"
-)]
 #[derive(Debug)]
 pub struct BinaryOp {
   pub dest: VarIndex,
@@ -26,12 +18,6 @@ pub struct BinaryOp {
   pub arg1: VarIndex,
 }
 
-/// A fused compare-and-branch operation. Combines a comparison with an
-/// immediately following branch to avoid double dispatch and an env read.
-#[expect(
-  missing_docs,
-  reason = "Fields are self-explanatory from `bril_rs::Instruction`"
-)]
 #[derive(Debug)]
 pub struct CmpBranch {
   pub dest: VarIndex,
@@ -41,10 +27,8 @@ pub struct CmpBranch {
   pub false_dest: LabelIndex,
 }
 
-/// A type alias for trying different index type sizes
 pub type IndexType = u16;
 
-/// A newtype for function indexing
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct FuncIndex(pub IndexType);
 
@@ -56,7 +40,6 @@ impl TryFrom<usize> for FuncIndex {
   }
 }
 
-/// A newtype for label indexing
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct LabelIndex(pub IndexType);
 
@@ -68,7 +51,6 @@ impl TryFrom<usize> for LabelIndex {
   }
 }
 
-/// A newtype for variable indexing
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct VarIndex(pub IndexType);
 
@@ -88,15 +70,6 @@ impl TryFrom<usize> for VarIndex {
   }
 }
 
-/// A flattened internal representation for Bril which supports a translation
-/// from `bril_ir::Instruction`.
-///
-/// Inspired by
-/// <https://www.cs.cornell.edu/courses/cs6120/2025sp/blog/flat-bril/> and <https://www.cs.cornell.edu/~asampson/blog/flattening.html>
-#[expect(
-  missing_docs,
-  reason = "Hopefully self-explanatory coming from `bril_ir::Instruction`"
-)]
 #[derive(Debug)]
 pub enum FlatIR {
   Const {
@@ -216,12 +189,6 @@ const _: () = {
 };
 
 impl FlatIR {
-  /// Converts a `bril_rs` [`Instruction`] into a [`FlatIR`] variant.
-  /// # Panics
-  /// Panics if the `func_map` does not contain the function name in a `Call`
-  /// instruction. (Amongst other reasons)
-  /// # Errors
-  /// If the label to jump to does not exist in the `num_label_map`.
   pub fn new(
     i: Instruction,
     func_map: &FxHashMap<String, FuncIndex>,
@@ -547,13 +514,6 @@ impl FlatIR {
   }
 }
 
-/// Gets a number from the map, or inserts it if it doesn't exist.
-/// # Panics
-/// If there are more than `T::MAX` variables.
-#[expect(
-  clippy::implicit_hasher,
-  reason = "Not sure why it asks for this when this should be using FxHashMap hasher"
-)]
 pub fn get_num_from_map<T: Copy + TryFrom<usize, Error = impl Debug>>(
   variable_name: String,
   num_var_map: &mut FxHashMap<String, T>,
