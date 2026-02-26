@@ -584,7 +584,6 @@ Examples:
                 run_cmd(["git", "stash", "pop"], cwd=repo_root, check=False)
 
     try:
-
         # Run benchmarks
         print("\nRunning benchmarks...")
         results = {}
