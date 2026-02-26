@@ -149,7 +149,9 @@ impl Heap {
   }
 
   fn write(&mut self, key: Pointer, val: Value) -> Result<(), InterpError> {
-    let offset: usize = key.offset.try_into()
+    let offset: usize = key
+      .offset
+      .try_into()
       .map_err(|_| InterpError::InvalidMemoryAccess(key.index, key.offset))?;
     let entry = &mut self.memory[key.index as usize];
     if entry.generation == key.generation && offset < entry.data.len() {
@@ -161,7 +163,9 @@ impl Heap {
   }
 
   fn read(&self, key: Pointer) -> Result<Value, InterpError> {
-    let offset: usize = key.offset.try_into()
+    let offset: usize = key
+      .offset
+      .try_into()
       .map_err(|_| InterpError::InvalidMemoryAccess(key.index, key.offset))?;
     let entry = &self.memory[key.index as usize];
     if entry.generation == key.generation && offset < entry.data.len() {
@@ -422,16 +426,18 @@ fn execute<'a, T: std::io::Write>(
         }
         FlatIR::Alloc(op) => {
           let a = get_arg::<i64>(&state.env, op.arg);
-          let res = state.heap.alloc(a).map_err(|e| {
-            e.add_pos(curr_block.positions.get(idx).cloned().unwrap_or_default())
-          })?;
+          let res = state
+            .heap
+            .alloc(a)
+            .map_err(|e| e.add_pos(curr_block.positions.get(idx).cloned().unwrap_or_default()))?;
           state.env.set(op.dest, res);
         }
         FlatIR::Load(op) => {
           let a = get_arg::<&Pointer>(&state.env, op.arg);
-          let res = state.heap.read(*a).map_err(|e| {
-            e.add_pos(curr_block.positions.get(idx).cloned().unwrap_or_default())
-          })?;
+          let res = state
+            .heap
+            .read(*a)
+            .map_err(|e| e.add_pos(curr_block.positions.get(idx).cloned().unwrap_or_default()))?;
           state.env.set(op.dest, res);
         }
         FlatIR::Float2Bits(op) => {
@@ -464,9 +470,10 @@ fn execute<'a, T: std::io::Write>(
           let a0 = get_arg::<i64>(&state.env, op.arg0);
           let a1 = get_arg::<i64>(&state.env, op.arg1);
           if a1 == 0 {
-            return Err(InterpError::DivisionByZero.add_pos(
-              curr_block.positions.get(idx).cloned().unwrap_or_default(),
-            ));
+            return Err(
+              InterpError::DivisionByZero
+                .add_pos(curr_block.positions.get(idx).cloned().unwrap_or_default()),
+            );
           }
           state.env.set(op.dest, Value::Int(a0.wrapping_div(a1)));
         }
@@ -578,9 +585,9 @@ fn execute<'a, T: std::io::Write>(
         FlatIR::PtrAdd(op) => {
           let a0 = get_arg::<&Pointer>(&state.env, op.arg0);
           let a1 = get_arg::<i64>(&state.env, op.arg1);
-          let ptr = a0.add(a1).map_err(|e| {
-            e.add_pos(curr_block.positions.get(idx).cloned().unwrap_or_default())
-          })?;
+          let ptr = a0
+            .add(a1)
+            .map_err(|e| e.add_pos(curr_block.positions.get(idx).cloned().unwrap_or_default()))?;
           state.env.set(op.dest, Value::Pointer(ptr));
         }
         FlatIR::MultiArityCall { func, dest, args } => {
@@ -695,9 +702,10 @@ fn execute<'a, T: std::io::Write>(
         FlatIR::Store { arg0, arg1 } => {
           let key = get_arg::<&Pointer>(&state.env, *arg0);
           let val = get_arg::<Value>(&state.env, *arg1);
-          state.heap.write(*key, val).map_err(|e| {
-            e.add_pos(curr_block.positions.get(idx).cloned().unwrap_or_default())
-          })?;
+          state
+            .heap
+            .write(*key, val)
+            .map_err(|e| e.add_pos(curr_block.positions.get(idx).cloned().unwrap_or_default()))?;
         }
         FlatIR::Set { arg0, arg1 } => {
           let val = get_arg::<Value>(&state.env, *arg1);
@@ -705,9 +713,10 @@ fn execute<'a, T: std::io::Write>(
         }
         FlatIR::Free { arg } => {
           let ptr = get_arg::<&Pointer>(&state.env, *arg);
-          state.heap.free(*ptr).map_err(|e| {
-            e.add_pos(curr_block.positions.get(idx).cloned().unwrap_or_default())
-          })?;
+          state
+            .heap
+            .free(*ptr)
+            .map_err(|e| e.add_pos(curr_block.positions.get(idx).cloned().unwrap_or_default()))?;
         }
       }
     }
@@ -716,8 +725,8 @@ fn execute<'a, T: std::io::Write>(
       BlockExit::Fallthrough(next) => curr_block_idx = next,
       BlockExit::Terminal => {
         if let Some(ty) = &func.return_type {
-          return Err(
-            InterpError::NonVoidFuncNoRet(ty.clone()).add_pos(if curr_instrs.is_empty() {
+          return Err(InterpError::NonVoidFuncNoRet(ty.clone()).add_pos(
+            if curr_instrs.is_empty() {
               func.pos.clone()
             } else {
               curr_block
@@ -725,8 +734,8 @@ fn execute<'a, T: std::io::Write>(
                 .get(curr_instrs.len() - 1)
                 .cloned()
                 .unwrap_or_default()
-            }),
-          );
+            },
+          ));
         }
         return Ok(None);
       }
