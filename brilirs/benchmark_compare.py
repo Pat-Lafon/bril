@@ -58,13 +58,20 @@ def check_requirements() -> bool:
         print("Missing required tools:", file=sys.stderr)
         for tool in missing:
             print(f"  - {tool}", file=sys.stderr)
-        print("\nPlease install the missing tools and ensure they are in PATH.", file=sys.stderr)
+        print(
+            "\nPlease install the missing tools and ensure they are in PATH.",
+            file=sys.stderr,
+        )
         return False
     return True
 
 
-def is_significant(baseline_mean: float, baseline_stddev: float,
-                   current_mean: float, current_stddev: float) -> bool:
+def is_significant(
+    baseline_mean: float,
+    baseline_stddev: float,
+    current_mean: float,
+    current_stddev: float,
+) -> bool:
     """
     Check if the difference between two measurements is statistically significant.
 
@@ -86,7 +93,9 @@ class BenchmarkInfo:
     category: str
 
 
-def run_cmd(cmd: list[str], cwd: Optional[Path] = None, check: bool = True) -> subprocess.CompletedProcess:
+def run_cmd(
+    cmd: list[str], cwd: Optional[Path] = None, check: bool = True
+) -> subprocess.CompletedProcess:
     """Run a command and return the result."""
     return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=check)
 
@@ -113,10 +122,14 @@ def setup_worktree(baseline_ref: str, worktree_path: Path) -> bool:
     """Create a git worktree for the baseline."""
     # Clean up if exists
     if worktree_path.exists():
-        run_cmd(["git", "worktree", "remove", "--force", str(worktree_path)], check=False)
+        run_cmd(
+            ["git", "worktree", "remove", "--force", str(worktree_path)], check=False
+        )
 
     # Create worktree
-    result = run_cmd(["git", "worktree", "add", str(worktree_path), baseline_ref], check=False)
+    result = run_cmd(
+        ["git", "worktree", "add", str(worktree_path), baseline_ref], check=False
+    )
     if result.returncode != 0:
         print(f"Error creating worktree: {result.stderr}", file=sys.stderr)
         return False
@@ -158,7 +171,10 @@ def build_pgo(brilirs_dir: Path, benchmarks_dir: Path) -> Optional[Path]:
     """Build PGO-optimized brilirs and return path to binary."""
     # Check for cargo-pgo
     if shutil.which("cargo-pgo") is None:
-        print("cargo-pgo not found. Install with: cargo install cargo-pgo", file=sys.stderr)
+        print(
+            "cargo-pgo not found. Install with: cargo install cargo-pgo",
+            file=sys.stderr,
+        )
         return None
 
     print("  Building instrumented binary...", end=" ", flush=True)
@@ -177,12 +193,26 @@ def build_pgo(brilirs_dir: Path, benchmarks_dir: Path) -> Optional[Path]:
     # Find instrumented binary (cargo-pgo puts it in target/<triple>/release/)
     try:
         find_result = subprocess.run(
-            ["find", str(brilirs_dir / "target"), "-name", "brilirs", "-type", "f", "-path", "*/release/*"],
-            capture_output=True, text=True, check=True
+            [
+                "find",
+                str(brilirs_dir / "target"),
+                "-name",
+                "brilirs",
+                "-type",
+                "f",
+                "-path",
+                "*/release/*",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
         )
         # Filter to get the one that's NOT in target/release (the instrumented one has a triple)
-        candidates = [p for p in find_result.stdout.strip().split('\n') if p]
-        instrumented_bin = next((p for p in candidates if "/release/brilirs" in p), candidates[0] if candidates else None)
+        candidates = [p for p in find_result.stdout.strip().split("\n") if p]
+        instrumented_bin = next(
+            (p for p in candidates if "/release/brilirs" in p),
+            candidates[0] if candidates else None,
+        )
         if not instrumented_bin:
             raise ValueError("No binary found")
     except (subprocess.CalledProcessError, IndexError, ValueError, StopIteration):
@@ -211,7 +241,9 @@ def build_pgo(brilirs_dir: Path, benchmarks_dir: Path) -> Optional[Path]:
             bril_file = benchmarks_dir / category / f"{name}.bril"
             if bril_file.exists():
                 with open(bril_file) as f:
-                    bril2json = subprocess.run(["bril2json"], stdin=f, capture_output=True)
+                    bril2json = subprocess.run(
+                        ["bril2json"], stdin=f, capture_output=True
+                    )
                 subprocess.run(
                     [instrumented_bin] + bench_args.split(),
                     input=bril2json.stdout,
@@ -247,7 +279,7 @@ def parse_args_from_bril(bril_path: Path) -> str:
     try:
         with open(bril_path) as f:
             for line in f:
-                match = re.match(r'#\s*ARGS:\s*(.*)', line)
+                match = re.match(r"#\s*ARGS:\s*(.*)", line)
                 if match:
                     return match.group(1).strip()
     except Exception:
@@ -255,7 +287,9 @@ def parse_args_from_bril(bril_path: Path) -> str:
     return ""
 
 
-def discover_benchmarks(benchmarks_dir: Path, categories: Optional[list] = None) -> list[BenchmarkInfo]:
+def discover_benchmarks(
+    benchmarks_dir: Path, categories: Optional[list] = None
+) -> list[BenchmarkInfo]:
     """Discover all benchmark files."""
     benchmarks = []
     dirs_to_scan = categories if categories else BENCHMARK_DIRS
@@ -268,12 +302,14 @@ def discover_benchmarks(benchmarks_dir: Path, categories: Optional[list] = None)
         for bril_file in sorted(category_dir.glob("*.bril")):
             name = bril_file.stem
             args = parse_args_from_bril(bril_file)
-            benchmarks.append(BenchmarkInfo(
-                name=name,
-                path=bril_file,
-                args=args,
-                category=category,
-            ))
+            benchmarks.append(
+                BenchmarkInfo(
+                    name=name,
+                    path=bril_file,
+                    args=args,
+                    category=category,
+                )
+            )
 
     return benchmarks
 
@@ -295,8 +331,14 @@ def convert_to_json(bril_path: Path, json_path: Path) -> bool:
     return True
 
 
-def run_comparison(baseline_bin: Path, current_bin: Path, json_path: Path,
-                   args: str, min_runs: int, warmup: int) -> Optional[dict]:
+def run_comparison(
+    baseline_bin: Path,
+    current_bin: Path,
+    json_path: Path,
+    args: str,
+    min_runs: int,
+    warmup: int,
+) -> Optional[dict]:
     """Run hyperfine comparison between two binaries."""
     baseline_cmd = f"{baseline_bin} -f {json_path}"
     current_cmd = f"{current_bin} -f {json_path}"
@@ -311,12 +353,19 @@ def run_comparison(baseline_bin: Path, current_bin: Path, json_path: Path,
         subprocess.run(
             [
                 "hyperfine",
-                "--warmup", str(warmup),
-                "--min-runs", str(min_runs),
-                "--export-json", result_path,
+                "--warmup",
+                str(warmup),
+                "--min-runs",
+                str(min_runs),
+                "--export-json",
+                result_path,
                 "--shell=none",
-                "-n", "baseline", baseline_cmd,
-                "-n", "current", current_cmd,
+                "-n",
+                "baseline",
+                baseline_cmd,
+                "-n",
+                "current",
+                current_cmd,
             ],
             capture_output=True,
             check=True,
@@ -354,21 +403,37 @@ Examples:
   %(prog)s --pgo                    # Compare release vs PGO-optimized
   %(prog)s --all                    # Run all benchmarks
   %(prog)s --category core float    # Run specific categories
-        """)
-    parser.add_argument("--baseline", type=str, default="HEAD~1",
-                        help="Baseline commit/branch to compare against (default: HEAD~1)")
-    parser.add_argument("--pgo", action="store_true",
-                        help="Compare regular release vs PGO-optimized build")
-    parser.add_argument("--min-runs", type=int, default=10, dest="min_runs",
-                        help="Minimum benchmark runs; hyperfine may run more (default: 10)")
-    parser.add_argument("--warmup", type=int, default=3,
-                        help="Number of warmup runs (default: 3)")
-    parser.add_argument("--all", action="store_true",
-                        help="Run all benchmarks")
-    parser.add_argument("--category", nargs="*", choices=BENCHMARK_DIRS,
-                        help="Benchmark categories to run (default: core)")
-    parser.add_argument("--output", type=str,
-                        help="Output results to JSON file")
+        """,
+    )
+    parser.add_argument(
+        "--baseline",
+        type=str,
+        default="HEAD~1",
+        help="Baseline commit/branch to compare against (default: HEAD~1)",
+    )
+    parser.add_argument(
+        "--pgo",
+        action="store_true",
+        help="Compare regular release vs PGO-optimized build",
+    )
+    parser.add_argument(
+        "--min-runs",
+        type=int,
+        default=10,
+        dest="min_runs",
+        help="Minimum benchmark runs; hyperfine may run more (default: 10)",
+    )
+    parser.add_argument(
+        "--warmup", type=int, default=3, help="Number of warmup runs (default: 3)"
+    )
+    parser.add_argument("--all", action="store_true", help="Run all benchmarks")
+    parser.add_argument(
+        "--category",
+        nargs="*",
+        choices=BENCHMARK_DIRS,
+        help="Benchmark categories to run (default: core)",
+    )
+    parser.add_argument("--output", type=str, help="Output results to JSON file")
     args = parser.parse_args()
 
     # Check requirements before doing anything
@@ -376,7 +441,10 @@ Examples:
         sys.exit(1)
 
     if args.pgo and shutil.which("cargo-pgo") is None:
-        print("--pgo requires cargo-pgo. Install with: cargo install cargo-pgo", file=sys.stderr)
+        print(
+            "--pgo requires cargo-pgo. Install with: cargo install cargo-pgo",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     script_dir = Path(__file__).parent.resolve()
@@ -392,7 +460,11 @@ Examples:
     else:
         baseline_label = f"{args.baseline} ({get_commit_message(args.baseline)})"
         uncommitted = has_uncommitted_changes(script_dir)
-        current_label = "working directory" if uncommitted else f"{get_current_commit()} ({get_commit_message('HEAD')})"
+        current_label = (
+            "working directory"
+            if uncommitted
+            else f"{get_current_commit()} ({get_commit_message('HEAD')})"
+        )
 
     print("=" * 70)
     print("BRILIRS BENCHMARK COMPARISON")
@@ -403,7 +475,9 @@ Examples:
     print()
 
     # Discover benchmarks
-    categories = args.category if args.category else (BENCHMARK_DIRS if args.all else ["core"])
+    categories = (
+        args.category if args.category else (BENCHMARK_DIRS if args.all else ["core"])
+    )
     benchmarks = discover_benchmarks(benchmarks_dir, categories)
 
     if not benchmarks:
@@ -450,24 +524,44 @@ Examples:
         current_bin = current_copy
 
         # Save current state
-        original_ref = run_cmd(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo_root).stdout.strip()
+        original_ref = run_cmd(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo_root
+        ).stdout.strip()
         if original_ref == "HEAD":
             # Detached HEAD, save the hash instead
-            original_ref = run_cmd(["git", "rev-parse", "HEAD"], cwd=repo_root).stdout.strip()
+            original_ref = run_cmd(
+                ["git", "rev-parse", "HEAD"], cwd=repo_root
+            ).stdout.strip()
 
         # Stash any uncommitted changes (including untracked files in brilirs/src)
         stashed = False
         if has_uncommitted_changes(repo_root):
             print("Stashing uncommitted changes...")
-            result = run_cmd(["git", "stash", "push", "--include-untracked", "-m", "benchmark_compare auto-stash"], cwd=repo_root, check=False)
+            result = run_cmd(
+                [
+                    "git",
+                    "stash",
+                    "push",
+                    "--include-untracked",
+                    "-m",
+                    "benchmark_compare auto-stash",
+                ],
+                cwd=repo_root,
+                check=False,
+            )
             stashed = result.returncode == 0
 
         try:
             # Checkout baseline
             print(f"Checking out baseline ({args.baseline})...")
-            result = run_cmd(["git", "checkout", args.baseline], cwd=repo_root, check=False)
+            result = run_cmd(
+                ["git", "checkout", args.baseline], cwd=repo_root, check=False
+            )
             if result.returncode != 0:
-                print(f"Failed to checkout {args.baseline}: {result.stderr}", file=sys.stderr)
+                print(
+                    f"Failed to checkout {args.baseline}: {result.stderr}",
+                    file=sys.stderr,
+                )
                 sys.exit(1)
 
             print("Building baseline version...")
@@ -497,7 +591,11 @@ Examples:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             for i, bench in enumerate(benchmarks, 1):
-                print(f"[{i}/{len(benchmarks)}] {bench.category}/{bench.name}...", end=" ", flush=True)
+                print(
+                    f"[{i}/{len(benchmarks)}] {bench.category}/{bench.name}...",
+                    end=" ",
+                    flush=True,
+                )
 
                 json_path = Path(tmpdir) / f"{bench.name}.json"
 
@@ -506,8 +604,12 @@ Examples:
                     continue
 
                 result = run_comparison(
-                    baseline_bin, current_bin, json_path,
-                    bench.args, args.min_runs, args.warmup
+                    baseline_bin,
+                    current_bin,
+                    json_path,
+                    bench.args,
+                    args.min_runs,
+                    args.warmup,
                 )
 
                 if result:
@@ -516,8 +618,10 @@ Examples:
                     change = ((baseline_time - current_time) / baseline_time) * 100
 
                     significant = is_significant(
-                        result["baseline"]["mean"], result["baseline"]["stddev"],
-                        result["current"]["mean"], result["current"]["stddev"],
+                        result["baseline"]["mean"],
+                        result["baseline"]["stddev"],
+                        result["current"]["mean"],
+                        result["current"]["stddev"],
                     )
 
                     results[bench.name] = {
@@ -530,10 +634,14 @@ Examples:
                     }
 
                     if not significant:
-                        print(f"{baseline_time:.1f}ms -> {current_time:.1f}ms (not significant)")
+                        print(
+                            f"{baseline_time:.1f}ms -> {current_time:.1f}ms (not significant)"
+                        )
                     else:
                         direction = "faster" if change > 0 else "slower"
-                        print(f"{baseline_time:.1f}ms -> {current_time:.1f}ms ({abs(change):.1f}% {direction})")
+                        print(
+                            f"{baseline_time:.1f}ms -> {current_time:.1f}ms ({abs(change):.1f}% {direction})"
+                        )
                 else:
                     print("failed")
 
@@ -572,7 +680,9 @@ Examples:
 
         print(f"\n## {category.upper()}")
         print("-" * 90)
-        print(f"{'Benchmark':<25} {'Baseline':>12} {'Current':>12} {'Change':>15} {'StdDev':>12}")
+        print(
+            f"{'Benchmark':<25} {'Baseline':>12} {'Current':>12} {'Change':>15} {'StdDev':>12}"
+        )
         print("-" * 90)
 
         for name, data in sorted(by_category[category]):
@@ -587,7 +697,9 @@ Examples:
                 direction = "faster" if change > 0 else "slower"
                 change_str = f"{abs(change):.1f}% {direction}"
 
-            print(f"{name:<25} {baseline_ms:>10.2f}ms {current_ms:>10.2f}ms {change_str:>15} ±{stddev_ms:>8.2f}ms")
+            print(
+                f"{name:<25} {baseline_ms:>10.2f}ms {current_ms:>10.2f}ms {change_str:>15} ±{stddev_ms:>8.2f}ms"
+            )
 
     print("-" * 90)
 
@@ -603,15 +715,21 @@ Examples:
         print("\n## SUMMARY")
         print("-" * 50)
         print(f"Total benchmarks: {len(results)}")
-        print(f"Faster: {len(faster)}, Slower: {len(slower)}, Not significant: {not_significant}")
+        print(
+            f"Faster: {len(faster)}, Slower: {len(slower)}, Not significant: {not_significant}"
+        )
         if sig_changes:
-            print(f"Average change (significant only): {sum(sig_changes) / len(sig_changes):+.1f}%")
+            print(
+                f"Average change (significant only): {sum(sig_changes) / len(sig_changes):+.1f}%"
+            )
         if faster:
             print(f"Average speedup (where faster): {sum(faster) / len(faster):+.1f}%")
         print("-" * 50)
 
         # Top improvements (only significant)
-        sorted_results = sorted(significant_results.items(), key=lambda x: x[1]["change_pct"], reverse=True)
+        sorted_results = sorted(
+            significant_results.items(), key=lambda x: x[1]["change_pct"], reverse=True
+        )
         if sorted_results:
             print("\nTop 5 improvements:")
             for name, data in sorted_results[:5]:
@@ -619,7 +737,7 @@ Examples:
 
         if slower:
             print("\nRegressions:")
-            for name, data in sorted_results[-len(slower):]:
+            for name, data in sorted_results[-len(slower) :]:
                 if data["change_pct"] < 0:
                     print(f"  {name}: {data['change_pct']:+.1f}%")
 
