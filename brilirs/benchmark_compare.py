@@ -33,7 +33,6 @@ Requirements:
 
 import argparse
 import json
-import math
 import os
 import re
 import shutil
@@ -493,7 +492,7 @@ Examples:
     try:
 
         # Run benchmarks
-        print(f"\nRunning benchmarks...")
+        print("\nRunning benchmarks...")
         results = {}
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -601,7 +600,7 @@ Examples:
         faster = [c for c in sig_changes if c > 0]
         slower = [c for c in sig_changes if c < 0]
 
-        print(f"\n## SUMMARY")
+        print("\n## SUMMARY")
         print("-" * 50)
         print(f"Total benchmarks: {len(results)}")
         print(f"Faster: {len(faster)}, Slower: {len(slower)}, Not significant: {not_significant}")
