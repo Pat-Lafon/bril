@@ -250,23 +250,27 @@ impl BBFunction {
             let ret_ir = FlatIR::new(i.clone(), func_map, &mut num_var_map, &label_map)?;
 
             // Check for tail call pattern: Call followed by Return
-            let is_tail_call = curr_block.flat_instrs.last().and_then(|prev| match (prev, &ret_ir) {
-              (FlatIR::MultiArityCall { func, dest, args }, FlatIR::ReturnValue { arg })
-                if dest == arg =>
-              {
-                Some(FlatIR::TailCall {
-                  func: *func,
-                  args: args.clone(),
-                })
-              }
-              (FlatIR::EffectfulCall { func, args }, FlatIR::ReturnVoid) => {
-                Some(FlatIR::TailCallVoid {
-                  func: *func,
-                  args: args.clone(),
-                })
-              }
-              _ => None,
-            });
+            let is_tail_call =
+              curr_block
+                .flat_instrs
+                .last()
+                .and_then(|prev| match (prev, &ret_ir) {
+                  (FlatIR::MultiArityCall { func, dest, args }, FlatIR::ReturnValue { arg })
+                    if dest == arg =>
+                  {
+                    Some(FlatIR::TailCall {
+                      func: *func,
+                      args: args.clone(),
+                    })
+                  }
+                  (FlatIR::EffectfulCall { func, args }, FlatIR::ReturnVoid) => {
+                    Some(FlatIR::TailCallVoid {
+                      func: *func,
+                      args: args.clone(),
+                    })
+                  }
+                  _ => None,
+                });
 
             if let Some(tail_call) = is_tail_call {
               // Replace the call with tail call, don't add the return
